@@ -14,7 +14,7 @@
         .logo-container { width: 60px; height: 60px; min-width: 60px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; font-weight: bold; color: white; border: 1px solid #eee; background: var(--primary); }
         .logo-img { width: 85%; height: 85%; object-fit: contain; }
         .has-logo { background: white !important; }
-        #barcode-wrapper { background: white; padding: 10px; border-radius: 10px; display: inline-block; margin-top: 10px; width: 100%; box-sizing: border-box; }
+        #barcode-wrapper { background: white; padding: 10px; border-radius: 10px; display: inline-block; margin-top: 10px; width: 100%; box-sizing: border-box; min-height: 120px; }
         #barcode { max-width: 100%; height: auto; }
         button { background: var(--success); color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: bold; width: 100%; margin-top: 10px; }
         .btn-blue { background: var(--primary); }
@@ -23,7 +23,8 @@
         .btn-small { padding: 6px 12px; width: auto; font-size: 12px; margin: 2px; }
         input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
         label { display: block; text-align: left; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #666; text-transform: uppercase; }
-        .card-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: left; }
+        .card-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: left; cursor: pointer; }
+        .card-item:active { background-color: #f8f9fa; }
         #editModal { display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
         .modal-content { background:white; padding:25px; border-radius:20px; width:90%; max-width:400px; text-align: left; max-height: 90vh; overflow-y: auto; }
     </style>
@@ -35,7 +36,7 @@
     
     <div id="closest-area" class="card">
         <div id="main-logo-box"></div>
-        <h3 id="store-name" style="margin: 5px 0;">Zoeken naar locatie...</h3>
+        <h3 id="store-name" style="margin: 5px 0;">Selecteer een kaart</h3>
         <div id="barcode-wrapper"><svg id="barcode"></svg></div>
         <p id="distance" style="font-size: 0.85em; color: #666; margin-top: 10px;"></p>
     </div>
@@ -52,7 +53,7 @@
         </div>
     </div>
 
-    <h3>Mijn Kaarten</h3>
+    <h3>Mijn Kaarten <small style="font-weight:normal; font-size:0.6em;">(Tik op kaart om te tonen)</small></h3>
     <div id="card-list" class="card" style="padding: 5px;"></div>
 
     <div style="display: flex; gap: 10px;">
@@ -69,7 +70,7 @@
         <label>Barcodenummer</label>
         <input type="text" id="editCode">
         <hr>
-        <label>Optie 1: Domein (bijv. ah.nl)</label>
+        <label>Optie 1: Domein (bijv. jumbo.com)</label>
         <input type="text" id="editDomain" placeholder="winkel.nl">
         <label>Optie 2: Directe Logo URL</label>
         <input type="text" id="editLogoUrl" placeholder="https://site.com/logo.png">
@@ -86,14 +87,21 @@
 
 <script>
     let cards = JSON.parse(localStorage.getItem('myCards')) || [];
-    let currentEditIndex = null, tempBase64 = null, wakeLock = null;
+    let currentEditIndex = null, tempBase64 = null;
 
     function getLogoHtml(card, size = 50) {
         const letter = card.name ? card.name.charAt(0).toUpperCase() : '?';
         const bgColor = card.color || '#007bff';
         return `<div class="logo-container ${card.logo ? 'has-logo' : ''}" style="width:${size}px; height:${size}px; min-width:${size}px; background-color:${bgColor};">
-            ${card.logo ? `<img src="${card.logo}" class="logo-img" onerror="this.style.display='none'; this.parentElement.classList.remove('has-logo'); this.parentElement.innerHTML='${letter}';">` : letter}
+            ${card.logo ? `<img src="${card.logo}" class="logo-img" onerror="handleLogoError(this, '${letter}')">` : letter}
         </div>`;
+    }
+
+    function handleLogoError(img, letter) {
+        img.style.display = 'none';
+        const parent = img.parentElement;
+        parent.classList.remove('has-logo');
+        parent.innerHTML = letter;
     }
 
     function saveCard() {
@@ -114,12 +122,13 @@
         document.getElementById('editLogoUrl').value = (c.logo && !c.logo.startsWith('data:')) ? c.logo : '';
         document.getElementById('editColor').value = c.color || '#007bff';
         document.getElementById('editModal').style.display = 'flex';
+        event.stopPropagation(); // Voorkom dat de kaart ook geselecteerd wordt
     }
 
     function handleFileUpload(e) {
-        const reader = new FileReader();
-        reader.onload = (ev) => { tempBase64 = ev.target.result; };
-        reader.readAsDataURL(e.target.files[0]);
+        const r = new FileReader();
+        r.onload = (ev) => { tempBase64 = ev.target.result; };
+        r.readAsDataURL(e.target.files[0]);
     }
 
     function confirmEdit() {
@@ -130,75 +139,35 @@
         const domain = document.getElementById('editDomain').value;
         const url = document.getElementById('editLogoUrl').value;
         c.domain = domain;
+        
         if (tempBase64) c.logo = tempBase64;
         else if (url) c.logo = url;
-        else if (domain) c.logo = `https://logo.clearbit.com/${domain}`;
+        else if (domain) c.logo = `https://www.google.com/s2/favicons?sz=128&domain=${domain}`; // Betrouwbaardere bron
+        
         localStorage.setItem('myCards', JSON.stringify(cards));
         location.reload();
     }
 
-    function updateLocForEdit() {
-        navigator.geolocation.getCurrentPosition(pos => {
-            cards[currentEditIndex].lat = pos.coords.latitude;
-            cards[currentEditIndex].lon = pos.coords.longitude;
-            alert("Locatie opgeslagen!");
-        });
+    function showCard(index) {
+        const c = cards[index];
+        document.getElementById('store-name').innerText = c.name;
+        document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
+        document.getElementById('distance').innerText = "Handmatig geselecteerd";
+        JsBarcode("#barcode", c.code, { width: 2, height: 100, displayValue: true });
+        window.scrollTo({top: 0, behavior: 'smooth'});
+        if ('wakeLock' in navigator) navigator.wakeLock.request('screen');
     }
 
     function renderList() {
         document.getElementById('card-list').innerHTML = cards.map((c, i) => `
-            <div class="card-item">
+            <div class="card-item" onclick="showCard(${i})">
                 ${getLogoHtml(c, 45)}
-                <div style="flex-grow:1; margin-left:10px;"><b>${c.name}</b><br><small>${c.lat ? '📍 Aan' : '⚪ Uit'}</small></div>
+                <div style="flex-grow:1; margin-left:10px;"><b>${c.name}</b><br><small>${c.lat ? '📍 Locatie ingesteld' : '⚪ Geen locatie'}</small></div>
                 <button class="btn-blue btn-small" onclick="openEdit(${i})">Edit</button>
                 <button class="btn-red btn-small" onclick="deleteCard(${i})">X</button>
             </div>`).join('') || "Geen kaarten";
     }
 
-    async function findClosest() {
+    function findClosest() {
         navigator.geolocation.getCurrentPosition(pos => {
-            let closest = null, minD = Infinity;
-            cards.forEach(c => {
-                if (c.lat) {
-                    const d = getDistance(pos.coords.latitude, pos.coords.longitude, c.lat, c.lon);
-                    if (d < minD) { minD = d; closest = c; }
-                }
-            });
-            if (closest) {
-                document.getElementById('store-name').innerText = closest.name;
-                document.getElementById('main-logo-box').innerHTML = getLogoHtml(closest, 70);
-                JsBarcode("#barcode", closest.code, { width: 2, height: 100 });
-                if ('wakeLock' in navigator) navigator.wakeLock.request('screen');
-            }
-        });
-    }
-
-    function getDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371e3;
-        const a = Math.sin(((lat2-lat1)*Math.PI/360))**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(((lon2-lon1)*Math.PI/360))**2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-
-    function startScanner() {
-        const f = document.createElement('div'); f.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:black;z-index:2000;";
-        document.body.appendChild(f);
-        Quagga.init({ inputStream: { name: "Live", type: "LiveStream", target: f }, decoder: { readers: ["ean_reader", "code_128_reader"] } }, (err) => { Quagga.start(); });
-        Quagga.onDetected(d => { document.getElementById('newCode').value = d.codeResult.code; Quagga.stop(); f.remove(); });
-    }
-
-    function downloadBackup() {
-        const a = document.createElement('a'); a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cards)); a.download = "backup.json"; a.click();
-    }
-
-    function importBackup(e) {
-        const r = new FileReader(); r.onload = (ev) => { cards = JSON.parse(ev.target.result); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); }; r.readAsText(e.target.files[0]);
-    }
-
-    function toggleAdd() { const f = document.getElementById('addForm'); f.style.display = f.style.display==='none'?'block':'none'; }
-    function closeEdit() { document.getElementById('editModal').style.display='none'; }
-    function deleteCard(i) { if(confirm("Wissen?")) { cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); } }
-
-    renderList(); findClosest();
-</script>
-</body>
-</html>
+            let closestIndex = -1, minD = Infinity
