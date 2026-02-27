@@ -1,85 +1,81 @@
 <style>
-    /* ... (bestaande stijlen blijven gelijk, pas deze specifieke aan) ... */
-    .logo-container { 
-        width: 55px; 
-        height: 55px; 
-        min-width: 55px; 
-        margin-right: 15px; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        border-radius: 50%; 
-        background: #007bff; /* Standaardkleur */
-        overflow: hidden; 
-        font-weight: bold; 
-        color: white; 
-        border: 1px solid #ddd;
+    /* ... (bestaande CSS) ... */
+
+    /* Forceert wit contrast achter de barcode */
+    #barcode-wrapper {
+        background: white;
+        padding: 10px;
+        border-radius: 10px;
+        display: inline-block;
+        transition: filter 0.3s ease;
     }
-    .logo-img { 
-        width: 90%; /* Iets kleiner dan 100% voor een mooie marge */
-        height: 90%; 
-        object-fit: contain; /* DIT ZORGT VOOR HET SCALEN */
-        display: block;
+
+    /* Een subtiele animatie om aan te geven dat de kaart 'actief' is */
+    .bright-mode {
+        box-shadow: 0 0 20px 5px rgba(255, 255, 255, 0.8);
+        filter: contrast(1.2) brightness(1.1);
     }
-    
-    /* Extra stijl voor witte achtergrond bij logo's */
-    .has-logo { background: white !important; }
 </style>
 
 <script>
-    // Update deze functie voor de intelligente scaling en kleur
-    function getLogoHtml(card, size = 45) {
-        const letter = card.name ? card.name.charAt(0).toUpperCase() : '?';
-        const bgColor = card.color || '#007bff';
-        const containerClass = card.logo ? 'logo-container has-logo' : 'logo-container';
-        
-        return `
-            <div class="${containerClass}" style="width:${size}px; height:${size}px; min-width:${size}px; background-color:${bgColor};">
-                ${card.logo ? 
-                    `<img src="${card.logo}" class="logo-img" onerror="this.style.display='none'; this.parentElement.classList.remove('has-logo'); this.parentElement.innerHTML='${letter}';">` : 
-                    letter}
-            </div>`;
-    }
+    // --- SCHERM WAKKER HOUDEN ---
+    let wakeLock = null;
 
-    // Voeg dit toe aan de openEdit functie om de kleurkiezer te ondersteunen
-    function openEdit(index) {
-        currentEditIndex = index;
-        tempBase64 = null;
-        const c = cards[index];
-        document.getElementById('editName').value = c.name;
-        document.getElementById('editCode').value = c.code;
-        document.getElementById('editLogoUrl').value = (c.logo && !c.logo.startsWith('data:')) ? c.logo : '';
-        
-        // Voeg een kleurkiezer toe aan je modal HTML als je die nog niet had
-        if (!document.getElementById('editColor')) {
-            const colorLabel = document.createElement('label');
-            colorLabel.innerText = "Bolletjeskleur (als er geen logo is)";
-            const colorInput = document.createElement('input');
-            colorInput.type = 'color';
-            colorInput.id = 'editColor';
-            colorInput.style.height = '40px';
-            document.getElementById('editCode').after(colorInput);
-            document.getElementById('editCode').after(colorLabel);
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log("Scherm blijft aan!");
+            }
+        } catch (err) {
+            console.error(`${err.name}, ${err.message}`);
         }
-        document.getElementById('editColor').value = c.color || '#007bff';
-        document.getElementById('editModal').style.display = 'flex';
     }
 
-    // Update de confirmEdit functie om de kleur op te slaan
-    function confirmEdit() {
-        const c = cards[currentEditIndex];
-        c.name = document.getElementById('editName').value;
-        c.code = document.getElementById('editCode').value;
-        c.color = document.getElementById('editColor').value;
-        
-        const urlInput = document.getElementById('editLogoUrl').value;
-        if (tempBase64) {
-            c.logo = tempBase64;
-        } else if (urlInput) {
-            c.logo = urlInput;
+    // --- OPTIMALISEER BARCODE WEERGAVE ---
+    function findClosest() {
+        if (navigator.geolocation && cards.length > 0) {
+            navigator.geolocation.getCurrentPosition(async pos => {
+                let closest = null, minD = Infinity;
+                cards.forEach(c => {
+                    if (c.lat && c.lon) {
+                        const d = getDistance(pos.coords.latitude, pos.coords.longitude, c.lat, c.lon);
+                        if (d < minD) { minD = d; closest = c; }
+                    }
+                });
+
+                if (closest) {
+                    document.getElementById('store-name').innerText = closest.name;
+                    document.getElementById('main-logo-box').innerHTML = getLogoHtml(closest, 70);
+                    
+                    // Barcode genereren
+                    JsBarcode("#barcode", closest.code, {
+                        background: "#ffffff",
+                        lineColor: "#000000",
+                        width: 2,
+                        height: 100,
+                        displayValue: true
+                    });
+
+                    // Activeer 'Helderheid' effect en WakeLock
+                    document.getElementById('closest-area').classList.add('bright-mode');
+                    document.getElementById('distance').innerText = `Afstand: ${Math.round(minD)}m (Scanner geoptimaliseerd)`;
+                    
+                    // Hou scherm aan
+                    requestWakeLock();
+                }
+            });
         }
-
-        localStorage.setItem('myCards', JSON.stringify(cards));
-        location.reload();
     }
+
+    // Zorg dat de WakeLock stopt als je de app verlaat om batterij te sparen
+    document.addEventListener('visibilitychange', async () => {
+        if (wakeLock !== null && document.visibilityState === 'hidden') {
+            await wakeLock.release();
+            wakeLock = null;
+        }
+    });
+
+    // Roep de functie aan bij laden
+    findClosest();
 </script>
