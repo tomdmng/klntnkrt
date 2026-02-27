@@ -1,1 +1,119 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mijn Slimme Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f4; color: #333; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        #barcode { max-width: 100%; height: 100px; }
+        button { background: #28a745; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 16px; width: 100%; margin-top: 10px; }
+        input { width: 90%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        #scanner-container { width: 100%; height: 250px; border: 2px solid #007bff; display: none; overflow: hidden; position: relative; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+    </style>
+</head>
+<body>
 
+    <h2>📍 Dichtstbijzijnde Kaart</h2>
+    <div id="app" class="card">
+        <h3 id="store-name">Locatie zoeken...</h3>
+        <svg id="barcode"></svg>
+        <p id="distance"></p>
+    </div>
+
+    <hr>
+
+    <h3>Kaart Toevoegen</h3>
+    <div class="card">
+        <input type="text" id="newName" placeholder="Winkelnaam (bijv. Jumbo)">
+        <input type="text" id="newCode" placeholder="Barcodenummer">
+        
+        <div id="scanner-container"></div>
+        <button type="button" onclick="startScanner()" style="background: #007bff;">📷 Scan Barcode</button>
+        <button onclick="saveCurrentLocation()">💾 Opslaan op huidige locatie</button>
+    </div>
+
+    <script>
+        let cards = JSON.parse(localStorage.getItem('myCards')) || [];
+
+        // --- SCANNER LOGICA ---
+        function startScanner() {
+            const container = document.getElementById('scanner-container');
+            container.style.display = 'block';
+
+            Quagga.init({
+                inputStream: { name: "Live", type: "LiveStream", target: container },
+                decoder: { readers: ["ean_reader", "code_128_reader", "upc_reader"] }
+            }, function(err) {
+                if (err) { console.error(err); return; }
+                Quagga.start();
+            });
+
+            Quagga.onDetected(data => {
+                document.getElementById('newCode').value = data.codeResult.code;
+                Quagga.stop();
+                container.style.display = 'none';
+                alert("Barcode herkend: " + data.codeResult.code);
+            });
+        }
+
+        // --- OPSLAAN & LOCATIE ---
+        function saveCurrentLocation() {
+            const name = document.getElementById('newName').value;
+            const code = document.getElementById('newCode').value;
+
+            if (!name || !code) return alert("Vul a.u.c.b. naam en code in");
+
+            navigator.geolocation.getCurrentPosition(position => {
+                const newCard = {
+                    name: name,
+                    code: code,
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude
+                };
+                cards.push(newCard);
+                localStorage.setItem('myCards', JSON.stringify(cards));
+                alert("Kaart succesvol opgeslagen!");
+                findClosestCard();
+            });
+        }
+
+        function findClosestCard() {
+            if (navigator.geolocation && cards.length > 0) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    let closest = null;
+                    let minDistance = Infinity;
+
+                    cards.forEach(card => {
+                        let dist = getDistance(position.coords.latitude, position.coords.longitude, card.lat, card.lon);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            closest = card;
+                        }
+                    });
+
+                    if (closest) {
+                        document.getElementById('store-name').innerText = "Winkel: " + closest.name;
+                        document.getElementById('distance').innerText = "Afstand: " + Math.round(minDistance) + " meter";
+                        JsBarcode("#barcode", closest.code);
+                    }
+                });
+            }
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const a = Math.sin((lat2-lat1)*Math.PI/360)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin((lon2-lon1)*Math.PI/360)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        findClosestCard();
+    </script>
+</body>
+</html>
