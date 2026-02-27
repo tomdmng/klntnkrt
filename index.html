@@ -24,7 +24,6 @@
         input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
         label { display: block; text-align: left; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #666; text-transform: uppercase; }
         .card-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: left; cursor: pointer; }
-        .card-item:active { background-color: #f8f9fa; }
         #editModal { display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
         .modal-content { background:white; padding:25px; border-radius:20px; width:90%; max-width:400px; text-align: left; max-height: 90vh; overflow-y: auto; }
     </style>
@@ -36,13 +35,13 @@
     
     <div id="closest-area" class="card">
         <div id="main-logo-box"></div>
-        <h3 id="store-name" style="margin: 5px 0;">Selecteer een kaart</h3>
+        <h3 id="store-name" style="margin: 5px 0;">Geen kaart geselecteerd</h3>
         <div id="barcode-wrapper"><svg id="barcode"></svg></div>
         <p id="distance" style="font-size: 0.85em; color: #666; margin-top: 10px;"></p>
     </div>
 
     <div class="card">
-        <button class="btn-blue" onclick="toggleAdd()">➕ Nieuwe Kaart Toevoegen</button>
+        <button class="btn-blue" id="addBtn" onclick="toggleAdd()">➕ Nieuwe Kaart Toevoegen</button>
         <div id="addForm" style="display:none; margin-top:20px; text-align: left;">
             <label>Winkelnaam</label>
             <input type="text" id="newName" placeholder="Bijv. Jumbo">
@@ -53,7 +52,7 @@
         </div>
     </div>
 
-    <h3>Mijn Kaarten <small style="font-weight:normal; font-size:0.6em;">(Tik op kaart om te tonen)</small></h3>
+    <h3>Mijn Kaarten</h3>
     <div id="card-list" class="card" style="padding: 5px;"></div>
 
     <div style="display: flex; gap: 10px;">
@@ -64,44 +63,38 @@
 
 <div id="editModal">
     <div class="modal-content">
-        <h3 style="margin-top: 0;">Kaart Aanpassen</h3>
-        <label>Winkelnaam</label>
-        <input type="text" id="editName">
-        <label>Barcodenummer</label>
-        <input type="text" id="editCode">
+        <h3>Aanpassen</h3>
+        <label>Winkelnaam</label><input type="text" id="editName">
+        <label>Barcodenummer</label><input type="text" id="editCode">
         <hr>
-        <label>Optie 1: Domein (bijv. jumbo.com)</label>
-        <input type="text" id="editDomain" placeholder="winkel.nl">
-        <label>Optie 2: Directe Logo URL</label>
-        <input type="text" id="editLogoUrl" placeholder="https://site.com/logo.png">
-        <label>Optie 3: Eigen foto uploaden</label>
-        <input type="file" id="editLogoFile" accept="image/*" onchange="handleFileUpload(event)">
+        <label>Domein (jumbo.com)</label><input type="text" id="editDomain">
+        <label>Logo URL</label><input type="text" id="editLogoUrl">
+        <label>Eigen foto</label><input type="file" id="editLogoFile" accept="image/*" onchange="handleFileUpload(event)">
         <hr>
-        <label>Kleur bolletje (zonder logo)</label>
-        <input type="color" id="editColor" style="height: 40px; padding: 2px;">
-        <button class="btn-orange" onclick="updateLocForEdit()">📍 Gebruik mijn huidige locatie</button>
-        <button onclick="confirmEdit()" style="margin-top: 15px;">💾 Opslaan</button>
+        <label>Kleur</label><input type="color" id="editColor" style="height:40px;">
+        <button class="btn-orange" onclick="updateLocForEdit()">📍 Huidige Locatie Opslaan</button>
+        <button onclick="confirmEdit()" style="margin-top:15px;">💾 Opslaan</button>
         <button class="btn-red" onclick="closeEdit()">Annuleren</button>
     </div>
 </div>
 
 <script>
+    // Alle functies zijn nu globaal beschikbaar
     let cards = JSON.parse(localStorage.getItem('myCards')) || [];
-    let currentEditIndex = null, tempBase64 = null;
+    let currentEditIndex = null;
+    let tempBase64 = null;
+
+    function toggleAdd() {
+        const f = document.getElementById('addForm');
+        f.style.display = (f.style.display === 'none' || f.style.display === '') ? 'block' : 'none';
+    }
 
     function getLogoHtml(card, size = 50) {
         const letter = card.name ? card.name.charAt(0).toUpperCase() : '?';
         const bgColor = card.color || '#007bff';
         return `<div class="logo-container ${card.logo ? 'has-logo' : ''}" style="width:${size}px; height:${size}px; min-width:${size}px; background-color:${bgColor};">
-            ${card.logo ? `<img src="${card.logo}" class="logo-img" onerror="handleLogoError(this, '${letter}')">` : letter}
+            ${card.logo ? `<img src="${card.logo}" class="logo-img" onerror="this.style.display='none'; this.parentElement.classList.remove('has-logo'); this.parentElement.innerHTML='${letter}';">` : letter}
         </div>`;
-    }
-
-    function handleLogoError(img, letter) {
-        img.style.display = 'none';
-        const parent = img.parentElement;
-        parent.classList.remove('has-logo');
-        parent.innerHTML = letter;
     }
 
     function saveCard() {
@@ -113,6 +106,28 @@
         location.reload();
     }
 
+    function renderList() {
+        const listDiv = document.getElementById('card-list');
+        listDiv.innerHTML = cards.map((c, i) => `
+            <div class="card-item" onclick="showCard(${i})">
+                ${getLogoHtml(c, 45)}
+                <div style="flex-grow:1; margin-left:10px;"><b>${c.name}</b><br><small>${c.lat ? '📍 Locatie aan' : '⚪ Geen locatie'}</small></div>
+                <button class="btn-blue btn-small" onclick="event.stopPropagation(); openEdit(${i})">Edit</button>
+                <button class="btn-red btn-small" onclick="event.stopPropagation(); deleteCard(${i})">X</button>
+            </div>`).join('') || "Geen kaarten";
+    }
+
+    function showCard(index) {
+        const c = cards[index];
+        if(!c) return;
+        document.getElementById('store-name').innerText = c.name;
+        document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
+        document.getElementById('distance').innerText = "Geselecteerd";
+        JsBarcode("#barcode", c.code, { width: 2, height: 100, displayValue: true });
+        window.scrollTo({top: 0, behavior: 'smooth'});
+        if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(()=>{});
+    }
+
     function openEdit(index) {
         currentEditIndex = index;
         const c = cards[index];
@@ -122,13 +137,6 @@
         document.getElementById('editLogoUrl').value = (c.logo && !c.logo.startsWith('data:')) ? c.logo : '';
         document.getElementById('editColor').value = c.color || '#007bff';
         document.getElementById('editModal').style.display = 'flex';
-        event.stopPropagation(); // Voorkom dat de kaart ook geselecteerd wordt
-    }
-
-    function handleFileUpload(e) {
-        const r = new FileReader();
-        r.onload = (ev) => { tempBase64 = ev.target.result; };
-        r.readAsDataURL(e.target.files[0]);
     }
 
     function confirmEdit() {
@@ -136,38 +144,6 @@
         c.name = document.getElementById('editName').value;
         c.code = document.getElementById('editCode').value;
         c.color = document.getElementById('editColor').value;
-        const domain = document.getElementById('editDomain').value;
+        const dom = document.getElementById('editDomain').value;
         const url = document.getElementById('editLogoUrl').value;
-        c.domain = domain;
-        
-        if (tempBase64) c.logo = tempBase64;
-        else if (url) c.logo = url;
-        else if (domain) c.logo = `https://www.google.com/s2/favicons?sz=128&domain=${domain}`; // Betrouwbaardere bron
-        
-        localStorage.setItem('myCards', JSON.stringify(cards));
-        location.reload();
-    }
-
-    function showCard(index) {
-        const c = cards[index];
-        document.getElementById('store-name').innerText = c.name;
-        document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
-        document.getElementById('distance').innerText = "Handmatig geselecteerd";
-        JsBarcode("#barcode", c.code, { width: 2, height: 100, displayValue: true });
-        window.scrollTo({top: 0, behavior: 'smooth'});
-        if ('wakeLock' in navigator) navigator.wakeLock.request('screen');
-    }
-
-    function renderList() {
-        document.getElementById('card-list').innerHTML = cards.map((c, i) => `
-            <div class="card-item" onclick="showCard(${i})">
-                ${getLogoHtml(c, 45)}
-                <div style="flex-grow:1; margin-left:10px;"><b>${c.name}</b><br><small>${c.lat ? '📍 Locatie ingesteld' : '⚪ Geen locatie'}</small></div>
-                <button class="btn-blue btn-small" onclick="openEdit(${i})">Edit</button>
-                <button class="btn-red btn-small" onclick="deleteCard(${i})">X</button>
-            </div>`).join('') || "Geen kaarten";
-    }
-
-    function findClosest() {
-        navigator.geolocation.getCurrentPosition(pos => {
-            let closestIndex = -1, minD = Infinity
+        c
