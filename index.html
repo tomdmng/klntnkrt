@@ -3,115 +3,150 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Card Wallet Ultra</title>
+    <title>Smart Card Wallet Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; background: #f0f2f5; color: #1c1e21; margin: 0; }
-        .container { max-width: 500px; margin: auto; }
+        .container { max-width: 500px; margin: auto; padding-bottom: 50px; }
         .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .logo { width: 60px; height: 60px; object-fit: contain; margin-bottom: 10px; border-radius: 8px; }
+        .logo-container { width: 50px; height: 50px; min-width: 50px; margin-right: 15px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: #007bff; overflow: hidden; font-weight: bold; color: white; }
+        .logo-img { width: 100%; height: 100%; object-fit: contain; }
         #barcode { max-width: 100%; height: 100px; }
-        button { background: #28a745; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 15px; width: 100%; margin-top: 8px; font-weight: bold; }
+        button { background: #28a745; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; margin-top: 5px; }
         .btn-blue { background: #007bff; }
-        .btn-red { background: #dc3545; padding: 5px 10px; width: auto; font-size: 12px; }
-        .btn-orange { background: #ff9800; }
+        .btn-orange { background: #fd7e14; }
+        .btn-red { background: #dc3545; }
+        .btn-small { padding: 5px 10px; width: auto; font-size: 11px; }
         input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
-        #scanner-container { width: 100%; height: 200px; border: 2px dashed #007bff; display: none; margin-bottom: 10px; border-radius: 10px; overflow: hidden; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .card-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
-        .card-item img { width: 40px; margin-right: 15px; }
+        .card-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
+        
+        /* Modal (Bewerk-venster) */
+        #editModal { display:none; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; }
+        .modal-content { background:white; padding:20px; border-radius:15px; width:90%; max-width:400px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>📍 Dichtstbijzijnde Kaart</h2>
-    <div id="closest-card-area" class="card">
-        <img id="main-logo" class="logo" src="https://via.placeholder.com/60?text=?" alt="logo">
-        <h3 id="store-name" style="margin: 5px 0;">Zoeken...</h3>
+    <h2>📍 Slimme Kaarthouder</h2>
+    
+    <div id="closest-area" class="card">
+        <div id="main-logo-box" style="display:flex; justify-content:center; margin-bottom:10px;"></div>
+        <h3 id="store-name" style="margin:5px 0;">Geen kaarten</h3>
         <svg id="barcode"></svg>
-        <p id="distance" style="font-size: 0.8em; color: #777;"></p>
+        <p id="distance" style="font-size:0.8em; color:#777;"></p>
     </div>
 
-    <hr>
-
-    <h3>Nieuwe Kaart Toevoegen</h3>
     <div class="card">
-        <input type="text" id="newName" placeholder="Winkelnaam (bijv. Albert Heijn)">
-        <input type="text" id="newWebsite" placeholder="Website (bijv. ah.nl voor logo)">
-        <input type="text" id="newCode" placeholder="Barcodenummer">
-        
-        <div id="scanner-container"></div>
-        <button type="button" class="btn-blue" onclick="startScanner()">📷 Scan Barcode</button>
-        <button onclick="saveCard()">💾 Opslaan op huidige locatie</button>
+        <button class="btn-blue" onclick="toggleAdd()">➕ Nieuwe Kaart Toevoegen</button>
+        <div id="addForm" style="display:none; margin-top:15px;">
+            <input type="text" id="newName" placeholder="Winkelnaam">
+            <input type="text" id="newCode" placeholder="Barcodenummer">
+            <button class="btn-orange" onclick="startScanner()">📷 Scan Barcode</button>
+            <button onclick="saveCard(true)">💾 Opslaan MET huidige locatie</button>
+            <button class="btn-blue" onclick="saveCard(false)">💾 Alleen opslaan (geen locatie)</button>
+        </div>
     </div>
 
-    <h3>Mijn Kaartenlijst</h3>
-    <div id="card-list" class="card">
-        </div>
+    <h3>Mijn Lijst</h3>
+    <div id="card-list" class="card"></div>
 
-    <div class="card" style="background: #eee;">
-        <h4>Beheer</h4>
-        <button class="btn-orange" onclick="downloadBackup()">📤 Download Backup</button>
-        <input type="file" id="importFile" accept=".json" onchange="importBackup(event)" style="margin-top:10px; font-size: 12px;">
+    <button class="btn-orange" style="width:auto;" onclick="downloadBackup()">📤 Backup</button>
+</div>
+
+<div id="editModal">
+    <div class="modal-content">
+        <h3>Kaart Bewerken</h3>
+        <input type="text" id="editName" placeholder="Winkelnaam">
+        <input type="text" id="editWebsite" placeholder="Website (voor logo, bijv. ah.nl)">
+        <input type="text" id="editCode" placeholder="Barcodenummer">
+        <p id="loc-status" style="font-size:0.8em;"></p>
+        <button class="btn-orange" onclick="updateLocForEdit()">📍 Gebruik mijn huidige locatie</button>
+        <button onclick="confirmEdit()">Klaar</button>
+        <button class="btn-red" onclick="closeEdit()">Annuleren</button>
     </div>
 </div>
 
 <script>
     let cards = JSON.parse(localStorage.getItem('myCards')) || [];
+    let currentEditIndex = null;
 
-    function startScanner() {
-        const container = document.getElementById('scanner-container');
-        container.style.display = 'block';
-        Quagga.init({
-            inputStream: { name: "Live", type: "LiveStream", target: container, constraints: { facingMode: "environment" } },
-            decoder: { readers: ["ean_reader", "code_128_reader"] }
-        }, (err) => {
-            if (err) return alert("Camerafout");
-            Quagga.start();
-        });
-        Quagga.onDetected(data => {
-            document.getElementById('newCode').value = data.codeResult.code;
-            Quagga.stop();
-            container.style.display = 'none';
-        });
+    function getLogoHtml(card, size = 40) {
+        const letter = card.name ? card.name.charAt(0).toUpperCase() : '?';
+        const logoUrl = card.logo || '';
+        return `
+            <div class="logo-container" style="width:${size}px; height:${size}px;">
+                <img src="${logoUrl}" class="logo-img" onerror="this.style.display='none'; this.parentElement.innerHTML='${letter}';" alt="">
+            </div>`;
     }
 
-    function saveCard() {
+    function saveCard(withLoc) {
         const name = document.getElementById('newName').value;
-        const website = document.getElementById('newWebsite').value;
         const code = document.getElementById('newCode').value;
-        if (!name || !code) return alert("Naam en code zijn verplicht");
+        if (!name || !code) return alert("Vul naam en code in");
 
-        navigator.geolocation.getCurrentPosition(pos => {
-            const logo = website ? `https://logo.clearbit.com/${website}` : `https://ui-avatars.com/api/?name=${name}`;
-            cards.push({ name, code, logo, lat: pos.coords.latitude, lon: pos.coords.longitude });
-            localStorage.setItem('myCards', JSON.stringify(cards));
-            location.reload();
-        });
+        const newCard = { name, code, logo: '', lat: null, lon: null };
+
+        if (withLoc) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                newCard.lat = pos.coords.latitude;
+                newCard.lon = pos.coords.longitude;
+                finalizeSave(newCard);
+            }, () => { alert("Locatie mislukt, kaart opgeslagen zonder locatie."); finalizeSave(newCard); });
+        } else {
+            finalizeSave(newCard);
+        }
+    }
+
+    function finalizeSave(card) {
+        cards.push(card);
+        localStorage.setItem('myCards', JSON.stringify(cards));
+        location.reload();
     }
 
     function renderList() {
         const listDiv = document.getElementById('card-list');
-        if (cards.length === 0) { listDiv.innerHTML = "Nog geen kaarten."; return; }
-        listDiv.innerHTML = cards.map((c, index) => `
+        listDiv.innerHTML = cards.map((c, i) => `
             <div class="card-item">
-                <div style="display:flex; align-items:center;">
-                    <img src="${c.logo}" onerror="this.src='https://via.placeholder.com/40'">
-                    <span><b>${c.name}</b><br><small>${c.code}</small></span>
+                ${getLogoHtml(c)}
+                <div style="flex-grow:1">
+                    <b>${c.name}</b><br><small>${c.lat ? '📍 Locatie ingesteld' : '⚪ Geen locatie'}</small>
                 </div>
-                <button class="btn-red" onclick="deleteCard(${index})">Wis</button>
+                <button class="btn-blue btn-small" onclick="openEdit(${i})">Edit</button>
+                <button class="btn-red btn-small" onclick="deleteCard(${i})">X</button>
             </div>
         `).join('');
     }
 
-    function deleteCard(index) {
-        if (confirm("Kaart verwijderen?")) {
-            cards.splice(index, 1);
-            localStorage.setItem('myCards', JSON.stringify(cards));
-            location.reload();
-        }
+    function openEdit(index) {
+        currentEditIndex = index;
+        const c = cards[index];
+        document.getElementById('editName').value = c.name;
+        document.getElementById('editCode').value = c.code;
+        document.getElementById('editWebsite').value = c.website || '';
+        document.getElementById('loc-status').innerText = c.lat ? "Locatie is al bekend." : "Nog geen locatie gekoppeld.";
+        document.getElementById('editModal').style.display = 'flex';
+    }
+
+    function updateLocForEdit() {
+        navigator.geolocation.getCurrentPosition(pos => {
+            cards[currentEditIndex].lat = pos.coords.latitude;
+            cards[currentEditIndex].lon = pos.coords.longitude;
+            document.getElementById('loc-status').innerText = "📍 Locatie NU vastgelegd!";
+        });
+    }
+
+    function confirmEdit() {
+        const c = cards[currentEditIndex];
+        c.name = document.getElementById('editName').value;
+        c.code = document.getElementById('editCode').value;
+        const web = document.getElementById('editWebsite').value;
+        c.website = web;
+        if(web) c.logo = `https://logo.clearbit.com/${web}`;
+        
+        localStorage.setItem('myCards', JSON.stringify(cards));
+        location.reload();
     }
 
     function findClosest() {
@@ -119,12 +154,14 @@
             navigator.geolocation.getCurrentPosition(pos => {
                 let closest = null, minD = Infinity;
                 cards.forEach(c => {
-                    const d = getDistance(pos.coords.latitude, pos.coords.longitude, c.lat, c.lon);
-                    if (d < minD) { minD = d; closest = c; }
+                    if (c.lat && c.lon) {
+                        const d = getDistance(pos.coords.latitude, pos.coords.longitude, c.lat, c.lon);
+                        if (d < minD) { minD = d; closest = c; }
+                    }
                 });
                 if (closest) {
                     document.getElementById('store-name').innerText = closest.name;
-                    document.getElementById('main-logo').src = closest.logo;
+                    document.getElementById('main-logo-box').innerHTML = getLogoHtml(closest, 60);
                     document.getElementById('distance').innerText = `Afstand: ${Math.round(minD)} meter`;
                     JsBarcode("#barcode", closest.code);
                 }
@@ -132,28 +169,19 @@
         }
     }
 
+    // Helper functies
+    function toggleAdd() { const f = document.getElementById('addForm'); f.style.display = f.style.display === 'none' ? 'block' : 'none'; }
+    function closeEdit() { document.getElementById('editModal').style.display = 'none'; }
+    function deleteCard(i) { if(confirm("Wissen?")) { cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); } }
     function getDistance(lat1, lon1, lat2, lon2) {
         const R = 6371e3;
         const a = Math.sin(((lat2-lat1)*Math.PI/180)/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(((lon2-lon1)*Math.PI/180)/2)**2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
-
     function downloadBackup() {
-        const blob = new Blob([JSON.stringify(cards)], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = "kaarten_backup.json";
-        a.click();
-    }
-
-    function importBackup(e) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            cards = JSON.parse(ev.target.result);
-            localStorage.setItem('myCards', JSON.stringify(cards));
-            location.reload();
-        };
-        reader.readAsText(e.target.files[0]);
+        a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cards));
+        a.download = "kaarten.json"; a.click();
     }
 
     renderList();
