@@ -8,190 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
 
-    <script>
-        let cards = JSON.parse(localStorage.getItem('myCards')) || [];
-        let currentEditIndex = null;
-        let tempBase64 = null;
-        let html5QrScanner = null;
-
-        function toggleAdd() {
-            const f = document.getElementById('addForm');
-            if (f) f.style.display = (f.style.display === 'none' || f.style.display === '') ? 'block' : 'none';
-        }
-
-        function getLogoHtml(card, size = 50) {
-            const letter = card.name ? card.name.charAt(0).toUpperCase() : '?';
-            const bgColor = card.color || '#007bff';
-            return `<div class="logo-container ${card.logo ? 'has-logo' : ''}" style="width:${size}px; height:${size}px; min-width:${size}px; background-color:${bgColor};">
-                ${card.logo ? `<img src="${card.logo}" class="logo-img" onerror="this.style.display='none'; this.parentElement.classList.remove('has-logo'); this.parentElement.innerHTML='${letter}';">` : letter}
-            </div>`;
-        }
-
-        function saveCard() {
-            const name = document.getElementById('newName').value;
-            const code = document.getElementById('newCode').value;
-            if (!name || !code) return alert("Vul naam en code in");
-            cards.push({ name, code, logo: '', color: '#007bff', lat: null, lon: null });
-            localStorage.setItem('myCards', JSON.stringify(cards));
-            window.location.reload();
-        }
-
-        function startScanner() {
-            const scannerDiv = document.getElementById('scanner-overlay');
-            scannerDiv.style.display = 'flex';
-            
-            html5QrScanner = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-            html5QrScanner.start(
-                { facingMode: "environment" }, 
-                config,
-                (decodedText) => {
-                    document.getElementById('newCode').value = decodedText;
-                    stopScanner();
-                    alert("Code gescand: " + decodedText);
-                },
-                (errorMessage) => { /* Scan fouten negeren we voor de flow */ }
-            ).catch((err) => {
-                alert("Camerafout: " + err);
-                stopScanner();
-            });
-        }
-
-        function stopScanner() {
-            if (html5QrScanner) {
-                html5QrScanner.stop().then(() => {
-                    document.getElementById('scanner-overlay').style.display = 'none';
-                }).catch(() => {
-                    document.getElementById('scanner-overlay').style.display = 'none';
-                });
-            } else {
-                document.getElementById('scanner-overlay').style.display = 'none';
-            }
-        }
-
-        function showCard(index) {
-            const c = cards[index];
-            if(!c) return;
-            document.getElementById('store-name').innerText = c.name;
-            document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
-            document.getElementById('distance').innerText = "Geselecteerd";
-            
-            // Probeer als barcode te tekenen, als dat faalt (bijv. bij tekst in QR), toon tekst
-            try {
-                JsBarcode("#barcode", c.code, { width: 2, height: 100, displayValue: true });
-            } catch(e) {
-                // Als het geen standaard barcode is, tonen we de tekst/QR info
-                document.getElementById('barcode-wrapper').innerHTML = `<p style="word-break:break-all; font-weight:bold;">${c.code}</p>`;
-            }
-            window.scrollTo({top: 0, behavior: 'smooth'});
-        }
-
-        function openEdit(index, event) {
-            if (event) event.stopPropagation();
-            currentEditIndex = index;
-            const c = cards[index];
-            document.getElementById('editName').value = c.name;
-            document.getElementById('editCode').value = c.code;
-            document.getElementById('editDomain').value = c.domain || '';
-            document.getElementById('editLogoUrl').value = (c.logo && !c.logo.startsWith('data:')) ? c.logo : '';
-            document.getElementById('editColor').value = c.color || '#007bff';
-            document.getElementById('editModal').style.display = 'flex';
-        }
-
-        function confirmEdit() {
-            const c = cards[currentEditIndex];
-            c.name = document.getElementById('editName').value;
-            c.code = document.getElementById('editCode').value;
-            c.color = document.getElementById('editColor').value;
-            const dom = document.getElementById('editDomain').value;
-            const url = document.getElementById('editLogoUrl').value;
-            c.domain = dom;
-            if (tempBase64) c.logo = tempBase64;
-            else if (url) c.logo = url;
-            else if (dom) c.logo = `https://www.google.com/s2/favicons?sz=128&domain=${dom}`;
-            localStorage.setItem('myCards', JSON.stringify(cards));
-            window.location.reload();
-        }
-
-        function deleteCard(index, event) {
-            if (event) event.stopPropagation();
-            if(confirm("Kaart verwijderen?")) {
-                cards.splice(index, 1);
-                localStorage.setItem('myCards', JSON.stringify(cards));
-                renderList();
-            }
-        }
-
-        function renderList() {
-            const listDiv = document.getElementById('card-list');
-            if (!listDiv) return;
-            listDiv.innerHTML = cards.map((c, i) => `
-                <div class="card-item" onclick="showCard(${i})">
-                    ${getLogoHtml(c, 45)}
-                    <div style="flex-grow:1; margin-left:10px;"><b>${c.name}</b><br><small>${c.lat ? '📍 Locatie aan' : '⚪ Geen locatie'}</small></div>
-                    <button class="btn-blue btn-small" onclick="openEdit(${i}, event)">Edit</button>
-                    <button class="btn-red btn-small" onclick="deleteCard(${i}, event)">X</button>
-                </div>`).join('') || "Geen kaarten.";
-        }
-
-        function updateLocForEdit() {
-            navigator.geolocation.getCurrentPosition(pos => {
-                cards[currentEditIndex].lat = pos.coords.latitude;
-                cards[currentEditIndex].lon = pos.coords.longitude;
-                alert("Locatie opgeslagen!");
-            });
-        }
-
-        function downloadBackup() {
-            const a = document.createElement('a');
-            a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cards));
-            a.download = "backup.json";
-            a.click();
-        }
-
-        function importBackup(e) {
-            const r = new FileReader();
-            r.onload = (ev) => {
-                cards = JSON.parse(ev.target.result);
-                localStorage.setItem('myCards', JSON.stringify(cards));
-                window.location.reload();
-            };
-            r.readAsText(e.target.files[0]);
-        }
-
-        function closeEdit() { document.getElementById('editModal').style.display = 'none'; }
-        function handleFileUpload(e) {
-            const file = e.target.files[0];
-            const r = new FileReader();
-            r.onload = (ev) => { tempBase64 = ev.target.result; };
-            r.readAsDataURL(file);
-        }
-
-        window.onload = function() {
-            renderList();
-            if (navigator.geolocation && cards.length > 0) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    let closestIdx = -1, minD = Infinity;
-                    cards.forEach((c, i) => {
-                        if (c.lat) {
-                            const R = 6371e3;
-                            const dLat = (c.lat - pos.coords.latitude) * Math.PI / 180;
-                            const dLon = (c.lon - pos.coords.longitude) * Math.PI / 180;
-                            const a = Math.sin(dLat/2)**2 + Math.cos(pos.coords.latitude*Math.PI/180)*Math.cos(c.lat*Math.PI/180)*Math.sin(dLon/2)**2;
-                            const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                            if (d < minD) { minD = d; closestIdx = i; }
-                        }
-                    });
-                    if (closestIdx !== -1 && minD < 500) {
-                        showCard(closestIdx);
-                        document.getElementById('distance').innerText = `Afstand: ${Math.round(minD)}m`;
-                    }
-                });
-            }
-        };
-    </script>
-
     <style>
         :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; --warning: #fd7e14; }
         body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 0; margin: 0; background: #f0f2f5; color: #1c1e21; }
@@ -207,4 +23,231 @@
         .btn-orange { background: var(--warning); }
         .btn-red { background: var(--danger); }
         .btn-small { padding: 6px 12px; width: auto; font-size: 12px; margin: 2px; }
-        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box;
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
+        label { display: block; text-align: left; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #666; text-transform: uppercase; }
+        .card-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: left; cursor: pointer; }
+        #scanner-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; flex-direction: column; align-items: center; justify-content: center; }
+        #reader { width: 300px; background: white; border-radius: 10px; overflow: hidden; }
+        #editModal { display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
+        .modal-content { background:white; padding:25px; border-radius:20px; width:90%; max-width:400px; text-align: left; max-height: 90vh; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="margin-top: 10px;">📍 Slimme Kaarthouder</h2>
+    
+    <div id="closest-area" class="card">
+        <div id="main-logo-box"></div>
+        <h3 id="store-name" style="margin: 5px 0;">Geen kaart geselecteerd</h3>
+        <div id="barcode-wrapper"><svg id="barcode"></svg></div>
+        <p id="distance" style="font-size: 0.85em; color: #666; margin-top: 10px;"></p>
+    </div>
+
+    <div class="card">
+        <button class="btn-blue" onclick="toggleAdd()">➕ Nieuwe Kaart Toevoegen</button>
+        <div id="addForm" style="display:none; margin-top:20px; text-align: left;">
+            <label>Winkelnaam</label><input type="text" id="newName" placeholder="Bijv. Jumbo">
+            <label>Code (Barcode of QR)</label><input type="text" id="newCode" placeholder="Typ nummer of scan">
+            <button class="btn-orange" onclick="startScanner()">📷 Scan met Camera</button>
+            <button onclick="saveCard()">💾 Kaart Opslaan</button>
+        </div>
+    </div>
+
+    <h3>Mijn Kaarten</h3>
+    <div id="card-list" class="card" style="padding: 5px;"></div>
+
+    <div style="display: flex; gap: 10px;">
+        <button class="btn-orange" onclick="downloadBackup()">📤 Backup</button>
+        <button class="btn-blue" style="position: relative; overflow: hidden;">📥 Import 
+            <input type="file" accept=".json" onchange="importBackup(event)" style="position:absolute; opacity:0; left:0; top:0; height:100%; width:100%; cursor:pointer;">
+        </button>
+    </div>
+</div>
+
+<div id="scanner-overlay">
+    <div id="reader"></div>
+    <button class="btn-red" onclick="stopScanner()" style="width: 200px; margin-top: 20px;">Sluiten</button>
+</div>
+
+<div id="editModal">
+    <div class="modal-content">
+        <h3>Aanpassen</h3>
+        <label>Winkelnaam</label><input type="text" id="editName">
+        <label>Code</label><input type="text" id="editCode">
+        <hr>
+        <label>Domein (jumbo.com)</label><input type="text" id="editDomain">
+        <label>Logo URL</label><input type="text" id="editLogoUrl">
+        <label>Eigen foto</label><input type="file" id="editLogoFile" accept="image/*" onchange="handleFileUpload(event)">
+        <hr>
+        <label>Kleur</label><input type="color" id="editColor" style="height:40px;">
+        <button class="btn-orange" onclick="updateLocForEdit()">📍 Locatie Nu Vastleggen</button>
+        <button onclick="confirmEdit()" style="margin-top:15px;">💾 Opslaan</button>
+        <button class="btn-red" onclick="closeEdit()">Annuleren</button>
+    </div>
+</div>
+
+<script>
+    let cards = JSON.parse(localStorage.getItem('myCards')) || [];
+    let currentEditIndex = null;
+    let tempBase64 = null;
+    let html5QrScanner = null;
+
+    function toggleAdd() {
+        const f = document.getElementById('addForm');
+        if (f) f.style.display = (f.style.display === 'none' || f.style.display === '') ? 'block' : 'none';
+    }
+
+    function getLogoHtml(card, size = 50) {
+        const letter = card.name ? card.name.charAt(0).toUpperCase() : '?';
+        const bgColor = card.color || '#007bff';
+        return `<div class="logo-container ${card.logo ? 'has-logo' : ''}" style="width:${size}px; height:${size}px; min-width:${size}px; background-color:${bgColor};">
+            ${card.logo ? `<img src="${card.logo}" class="logo-img" onerror="this.style.display='none'; this.parentElement.classList.remove('has-logo'); this.parentElement.innerHTML='${letter}';">` : letter}
+        </div>`;
+    }
+
+    function saveCard() {
+        const name = document.getElementById('newName').value;
+        const code = document.getElementById('newCode').value;
+        if (!name || !code) return alert("Vul alles in");
+        cards.push({ name, code, logo: '', color: '#007bff', lat: null, lon: null });
+        localStorage.setItem('myCards', JSON.stringify(cards));
+        location.reload();
+    }
+
+    function showCard(index) {
+        const c = cards[index];
+        const storeNameElem = document.getElementById('store-name');
+        if(!c || !storeNameElem) return;
+
+        storeNameElem.innerText = c.name;
+        document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
+        document.getElementById('distance').innerText = "Geselecteerd";
+        
+        const wrapper = document.getElementById('barcode-wrapper');
+        wrapper.innerHTML = '<svg id="barcode"></svg>'; 
+        
+        try {
+            JsBarcode("#barcode", c.code, { width: 2, height: 100, displayValue: true });
+        } catch(e) {
+            wrapper.innerHTML = `<p style="word-break:break-all; font-weight:bold; padding:20px;">${c.code}</p>`;
+        }
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+
+    function startScanner() {
+        const scannerDiv = document.getElementById('scanner-overlay');
+        scannerDiv.style.display = 'flex';
+        html5QrScanner = new Html5Qrcode("reader");
+        html5QrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+            document.getElementById('newCode').value = text;
+            stopScanner();
+        }).catch(err => { alert(err); stopScanner(); });
+    }
+
+    function stopScanner() {
+        if (html5QrScanner) {
+            html5QrScanner.stop().finally(() => { document.getElementById('scanner-overlay').style.display = 'none'; });
+        } else {
+            document.getElementById('scanner-overlay').style.display = 'none';
+        }
+    }
+
+    function openEdit(index, event) {
+        if (event) event.stopPropagation();
+        currentEditIndex = index;
+        const c = cards[index];
+        document.getElementById('editName').value = c.name;
+        document.getElementById('editCode').value = c.code;
+        document.getElementById('editDomain').value = c.domain || '';
+        document.getElementById('editLogoUrl').value = (c.logo && !c.logo.startsWith('data:')) ? c.logo : '';
+        document.getElementById('editColor').value = c.color || '#007bff';
+        document.getElementById('editModal').style.display = 'flex';
+    }
+
+    function confirmEdit() {
+        const c = cards[currentEditIndex];
+        c.name = document.getElementById('editName').value;
+        c.code = document.getElementById('editCode').value;
+        c.color = document.getElementById('editColor').value;
+        const dom = document.getElementById('editDomain').value;
+        const url = document.getElementById('editLogoUrl').value;
+        c.domain = dom;
+        if (tempBase64) c.logo = tempBase64;
+        else if (url) c.logo = url;
+        else if (dom) c.logo = `https://www.google.com/s2/favicons?sz=128&domain=${dom}`;
+        localStorage.setItem('myCards', JSON.stringify(cards));
+        location.reload();
+    }
+
+    function renderList() {
+        const listDiv = document.getElementById('card-list');
+        if (!listDiv) return;
+        listDiv.innerHTML = cards.map((c, i) => `
+            <div class="card-item" onclick="showCard(${i})">
+                ${getLogoHtml(c, 45)}
+                <div style="flex-grow:1; margin-left:10px;"><b>${c.name}</b><br><small>${c.lat ? '📍 Aan' : '⚪ Uit'}</small></div>
+                <button class="btn-blue btn-small" onclick="openEdit(${i}, event)">Edit</button>
+                <button class="btn-red btn-small" onclick="deleteCard(${i}, event)">X</button>
+            </div>`).join('') || "Geen kaarten.";
+    }
+
+    function deleteCard(i, e) {
+        if (e) e.stopPropagation();
+        if(confirm("Wissen?")) { cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); }
+    }
+
+    function updateLocForEdit() {
+        navigator.geolocation.getCurrentPosition(pos => {
+            cards[currentEditIndex].lat = pos.coords.latitude;
+            cards[currentEditIndex].lon = pos.coords.longitude;
+            alert("Locatie opgeslagen!");
+        });
+    }
+
+    function handleFileUpload(e) {
+        const r = new FileReader();
+        r.onload = (ev) => { tempBase64 = ev.target.result; };
+        r.readAsDataURL(e.target.files[0]);
+    }
+
+    function downloadBackup() {
+        const a = document.createElement('a');
+        a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cards));
+        a.download = "backup.json"; a.click();
+    }
+
+    function importBackup(e) {
+        const r = new FileReader();
+        r.onload = (ev) => { cards = JSON.parse(ev.target.result); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); };
+        r.readAsText(e.target.files[0]);
+    }
+
+    function closeEdit() { document.getElementById('editModal').style.display = 'none'; }
+
+    // Start de logica pas als de DOM klaar is
+    document.addEventListener('DOMContentLoaded', () => {
+        renderList();
+        if (navigator.geolocation && cards.length > 0) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                let closestIdx = -1, minD = Infinity;
+                cards.forEach((c, i) => {
+                    if (c.lat) {
+                        const R = 6371e3;
+                        const dLat = (c.lat - pos.coords.latitude) * Math.PI / 180;
+                        const dLon = (c.lon - pos.coords.longitude) * Math.PI / 180;
+                        const a = Math.sin(dLat/2)**2 + Math.cos(pos.coords.latitude*Math.PI/180)*Math.cos(c.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+                        const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                        if (d < minD) { minD = d; closestIdx = i; }
+                    }
+                });
+                if (closestIdx !== -1 && minD < 500) {
+                    showCard(closestIdx);
+                    document.getElementById('distance').innerText = `Afstand: ${Math.round(minD)}m`;
+                }
+            });
+        }
+    });
+</script>
+</body>
+</html>
