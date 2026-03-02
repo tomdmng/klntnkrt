@@ -7,6 +7,7 @@
     
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <style>
         :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; --warning: #fd7e14; }
@@ -16,14 +17,15 @@
         .logo-container { width: 60px; height: 60px; min-width: 60px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; font-weight: bold; color: white; border: 1px solid #eee; background: var(--primary); }
         .logo-img { width: 85%; height: 85%; object-fit: contain; }
         .has-logo { background: white !important; }
-        #barcode-wrapper { background: white; padding: 10px; border-radius: 10px; display: inline-block; margin-top: 10px; width: 100%; box-sizing: border-box; min-height: 120px; }
+        #barcode-wrapper { background: white; padding: 15px; border-radius: 10px; display: inline-block; margin-top: 10px; width: 100%; box-sizing: border-box; min-height: 150px; display: flex; justify-content: center; align-items: center; }
         #barcode { max-width: 100%; height: auto; }
+        #qrcode { padding: 10px; background: white; }
         button { background: var(--success); color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: bold; width: 100%; margin-top: 10px; }
         .btn-blue { background: var(--primary); }
         .btn-orange { background: var(--warning); }
         .btn-red { background: var(--danger); }
         .btn-small { padding: 6px 12px; width: auto; font-size: 12px; margin: 2px; }
-        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
+        input, select { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
         label { display: block; text-align: left; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #666; text-transform: uppercase; }
         .card-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: left; cursor: pointer; }
         #scanner-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; flex-direction: column; align-items: center; justify-content: center; }
@@ -39,16 +41,19 @@
     
     <div id="closest-area" class="card">
         <div id="main-logo-box"></div>
-        <h3 id="store-name" style="margin: 5px 0;">Geen kaart geselecteerd</h3>
-        <div id="barcode-wrapper"><svg id="barcode"></svg></div>
+        <h3 id="store-name" style="margin: 5px 0;">Selecteer een kaart</h3>
+        <div id="barcode-wrapper">
+            <svg id="barcode"></svg>
+            <div id="qrcode"></div>
+        </div>
         <p id="distance" style="font-size: 0.85em; color: #666; margin-top: 10px;"></p>
     </div>
 
     <div class="card">
         <button class="btn-blue" onclick="toggleAdd()">➕ Nieuwe Kaart Toevoegen</button>
         <div id="addForm" style="display:none; margin-top:20px; text-align: left;">
-            <label>Winkelnaam</label><input type="text" id="newName" placeholder="Bijv. Jumbo">
-            <label>Code (Barcode of QR)</label><input type="text" id="newCode" placeholder="Typ nummer of scan">
+            <label>Winkelnaam</label><input type="text" id="newName" placeholder="Bijv. Colruyt">
+            <label>Code</label><input type="text" id="newCode" placeholder="Typ nummer of scan">
             <button class="btn-orange" onclick="startScanner()">📷 Scan met Camera</button>
             <button onclick="saveCard()">💾 Kaart Opslaan</button>
         </div>
@@ -75,11 +80,14 @@
         <h3>Aanpassen</h3>
         <label>Winkelnaam</label><input type="text" id="editName">
         <label>Code</label><input type="text" id="editCode">
+        <label>Type Code</label>
+        <select id="editType">
+            <option value="barcode">Streepjescode (1D)</option>
+            <option value="qrcode">QR-code (2D)</option>
+        </select>
         <hr>
-        <label>Domein (jumbo.com)</label><input type="text" id="editDomain">
+        <label>Domein (colruyt.be)</label><input type="text" id="editDomain">
         <label>Logo URL</label><input type="text" id="editLogoUrl">
-        <label>Eigen foto</label><input type="file" id="editLogoFile" accept="image/*" onchange="handleFileUpload(event)">
-        <hr>
         <label>Kleur</label><input type="color" id="editColor" style="height:40px;">
         <button class="btn-orange" onclick="updateLocForEdit()">📍 Locatie Nu Vastleggen</button>
         <button onclick="confirmEdit()" style="margin-top:15px;">💾 Opslaan</button>
@@ -90,7 +98,6 @@
 <script>
     let cards = JSON.parse(localStorage.getItem('myCards')) || [];
     let currentEditIndex = null;
-    let tempBase64 = null;
     let html5QrScanner = null;
 
     function toggleAdd() {
@@ -109,8 +116,8 @@
     function saveCard() {
         const name = document.getElementById('newName').value;
         const code = document.getElementById('newCode').value;
-        if (!name || !code) return alert("Vul alles in");
-        cards.push({ name, code, logo: '', color: '#007bff', lat: null, lon: null });
+        if (!name || !code) return alert("Vul naam en code in");
+        cards.push({ name, code, logo: '', color: '#007bff', lat: null, lon: null, type: 'barcode' });
         localStorage.setItem('myCards', JSON.stringify(cards));
         location.reload();
     }
@@ -124,13 +131,26 @@
         document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
         document.getElementById('distance').innerText = "Geselecteerd";
         
-        const wrapper = document.getElementById('barcode-wrapper');
-        wrapper.innerHTML = '<svg id="barcode"></svg>'; 
+        const bcSvg = document.getElementById('barcode');
+        const qrDiv = document.getElementById('qrcode');
         
-        try {
-            JsBarcode("#barcode", c.code, { width: 2, height: 100, displayValue: true });
-        } catch(e) {
-            wrapper.innerHTML = `<p style="word-break:break-all; font-weight:bold; padding:20px;">${c.code}</p>`;
+        // Reset weergave
+        bcSvg.style.display = 'none';
+        qrDiv.innerHTML = '';
+        qrDiv.style.display = 'none';
+
+        if (c.type === 'qrcode') {
+            qrDiv.style.display = 'block';
+            new QRCode(qrDiv, { text: c.code, width: 180, height: 180 });
+        } else {
+            bcSvg.style.display = 'block';
+            try {
+                JsBarcode("#barcode", c.code, { width: 2, height: 100, displayValue: true });
+            } catch(e) {
+                bcSvg.style.display = 'none';
+                qrDiv.style.display = 'block';
+                qrDiv.innerHTML = `<p style="word-break:break-all; font-weight:bold;">${c.code}</p>`;
+            }
         }
         window.scrollTo({top: 0, behavior: 'smooth'});
     }
@@ -162,6 +182,7 @@
         document.getElementById('editDomain').value = c.domain || '';
         document.getElementById('editLogoUrl').value = (c.logo && !c.logo.startsWith('data:')) ? c.logo : '';
         document.getElementById('editColor').value = c.color || '#007bff';
+        document.getElementById('editType').value = c.type || 'barcode';
         document.getElementById('editModal').style.display = 'flex';
     }
 
@@ -170,12 +191,14 @@
         c.name = document.getElementById('editName').value;
         c.code = document.getElementById('editCode').value;
         c.color = document.getElementById('editColor').value;
+        c.type = document.getElementById('editType').value;
         const dom = document.getElementById('editDomain').value;
-        const url = document.getElementById('editLogoUrl').value;
         c.domain = dom;
-        if (tempBase64) c.logo = tempBase64;
-        else if (url) c.logo = url;
-        else if (dom) c.logo = `https://www.google.com/s2/favicons?sz=128&domain=${dom}`;
+        if (dom && !document.getElementById('editLogoUrl').value) {
+            c.logo = `https://www.google.com/s2/favicons?sz=128&domain=${dom}`;
+        } else if (document.getElementById('editLogoUrl').value) {
+            c.logo = document.getElementById('editLogoUrl').value;
+        }
         localStorage.setItem('myCards', JSON.stringify(cards));
         location.reload();
     }
@@ -186,7 +209,7 @@
         listDiv.innerHTML = cards.map((c, i) => `
             <div class="card-item" onclick="showCard(${i})">
                 ${getLogoHtml(c, 45)}
-                <div style="flex-grow:1; margin-left:10px;"><b>${c.name}</b><br><small>${c.lat ? '📍 Aan' : '⚪ Uit'}</small></div>
+                <div style="flex-grow:1; margin-left:10px;"><b>${c.name}</b><br><small>${c.type === 'qrcode' ? 'QR' : 'Barcode'}</small></div>
                 <button class="btn-blue btn-small" onclick="openEdit(${i}, event)">Edit</button>
                 <button class="btn-red btn-small" onclick="deleteCard(${i}, event)">X</button>
             </div>`).join('') || "Geen kaarten.";
@@ -205,12 +228,6 @@
         });
     }
 
-    function handleFileUpload(e) {
-        const r = new FileReader();
-        r.onload = (ev) => { tempBase64 = ev.target.result; };
-        r.readAsDataURL(e.target.files[0]);
-    }
-
     function downloadBackup() {
         const a = document.createElement('a');
         a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cards));
@@ -225,7 +242,6 @@
 
     function closeEdit() { document.getElementById('editModal').style.display = 'none'; }
 
-    // Start de logica pas als de DOM klaar is
     document.addEventListener('DOMContentLoaded', () => {
         renderList();
         if (navigator.geolocation && cards.length > 0) {
