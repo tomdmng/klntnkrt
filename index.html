@@ -124,37 +124,61 @@
 
     function showCard(index) {
         const c = cards[index];
-        const storeNameElem = document.getElementById('store-name');
-        if(!c || !storeNameElem) return;
-
-        storeNameElem.innerText = c.name;
+        if(!c) return;
+        
+        document.getElementById('store-name').innerText = c.name || '';
         document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
-        document.getElementById('distance').innerText = "Geselecteerd";
         
-        const bcSvg = document.getElementById('barcode');
-        const qrDiv = document.getElementById('qrcode');
+        const bc = document.getElementById('barcode');
+        const qr = document.getElementById('qrcode');
+        const txt = document.getElementById('display-text');
         
-        // Reset weergave
-        bcSvg.style.display = 'none';
-        qrDiv.innerHTML = '';
-        qrDiv.style.display = 'none';
-
+        bc.style.display = 'none'; 
+        qr.innerHTML = ''; 
+        qr.style.display = 'none';
+        txt.innerText = c.displayNum || c.code || '';
+    
         if (c.type === 'qrcode') {
-            qrDiv.style.display = 'block';
-            new QRCode(qrDiv, { text: c.code, width: 180, height: 180 });
-        } else {
-            bcSvg.style.display = 'block';
+            qr.style.display = 'block';
             try {
-                JsBarcode("#barcode", c.code, { width: 2, height: 100, displayValue: true });
-            } catch(e) {
-                bcSvg.style.display = 'none';
-                qrDiv.style.display = 'block';
-                qrDiv.innerHTML = `<p style="word-break:break-all; font-weight:bold;">${c.code}</p>`;
+                // OPTIMALISATIE VOOR COLRUYT:
+                // We gebruiken Level M (Medium). Dit geeft een perfecte balans tussen 
+                // stevige blokjes en voldoende foutcorrectie voor schermen.
+                new QRCode(qr, { 
+                    text: c.code.trim(), 
+                    width: 220, 
+                    height: 220,
+                    colorDark : "#000000",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.M 
+                });
+                
+                // Rust voor de scanner: een witte rand (Quiet Zone)
+                qr.style.padding = "15px";
+                qr.style.background = "white";
+                qr.style.borderRadius = "10px";
+            } catch(e) { 
+                qr.innerText = "QR-fout: Code te lang"; 
+                console.error(e);
+            }
+        } else {
+            bc.style.display = 'block';
+            try { 
+                JsBarcode("#barcode", c.code.trim(), { 
+                    width: 2, 
+                    height: 100, 
+                    displayValue: false,
+                    margin: 10
+                }); 
+            } catch(e) { 
+                bc.style.display='none'; 
+                qr.style.display='block'; 
+                qr.innerText=c.code; 
             }
         }
         window.scrollTo({top: 0, behavior: 'smooth'});
     }
-
+    
     function startScanner() {
         const scannerDiv = document.getElementById('scanner-overlay');
         scannerDiv.style.display = 'flex';
