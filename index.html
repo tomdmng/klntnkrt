@@ -21,7 +21,8 @@
         .logo-img { width: 85%; height: 85%; object-fit: contain; }
         
         #barcode-wrapper { background: white; padding: 15px; border-radius: 10px; min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; box-sizing: border-box; border: 1px solid #eee; }
-        #barcode { max-width: 100%; height: auto; display: none; }
+        /* We gebruiken nu canvas voor barcodes */
+        #barcode-canvas { max-width: 100%; height: auto; display: none; }
         #qrcode { display: none; padding: 10px; background: white; }
         #display-text { font-family: monospace; font-size: 1.3em; font-weight: bold; margin-top: 15px; letter-spacing: 1px; word-break: break-all; color: #333; }
 
@@ -48,7 +49,7 @@
         <div id="main-logo-box"></div>
         <h3 id="store-name" style="margin: 5px 0;">Kies een kaart</h3>
         <div id="barcode-wrapper">
-            <svg id="barcode"></svg>
+            <canvas id="barcode-canvas"></canvas>
             <div id="qrcode"></div>
             <div id="display-text"></div>
         </div>
@@ -86,7 +87,7 @@
         <label>Type</label>
         <select id="editType"><option value="barcode">Streepjescode</option><option value="qrcode">QR-code</option></select>
         <hr>
-        <label>Domein (bijv. ah.nl)</label><input type="text" id="editDomain">
+        <label>Logo Domein (ah.nl)</label><input type="text" id="editDomain">
         <button class="btn-orange" onclick="initMap()">📍 Kies locatie op kaart</button>
         <div id="map"></div>
         <button onclick="confirmEdit()" style="margin-top:15px;">💾 Opslaan</button>
@@ -95,7 +96,6 @@
 </div>
 
 <script>
-    // Alle logica in één enkel script blok
     (function() {
         let cards = [];
         try { cards = JSON.parse(localStorage.getItem('myCards')) || []; } catch (e) { cards = []; }
@@ -128,25 +128,38 @@
             document.getElementById('store-name').innerText = c.name;
             document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
             
-            const bc = document.getElementById('barcode');
+            const canvas = document.getElementById('barcode-canvas');
             const qr = document.getElementById('qrcode');
             const txt = document.getElementById('display-text');
             
-            bc.style.display = 'none'; bc.innerHTML = '';
+            // Alles resetten
+            canvas.style.display = 'none';
             qr.style.display = 'none'; qr.innerHTML = '';
             txt.innerText = c.displayNum || c.code;
 
+            const codeData = String(c.code).trim();
+
             if (c.type === 'qrcode') {
                 qr.style.display = 'block';
-                new QRCode(qr, { text: c.code, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+                new QRCode(qr, { text: codeData, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
             } else {
-                bc.style.display = 'block';
-                // Kleine vertraging voor stabiliteit in mobiele browsers
-                setTimeout(() => {
-                    try { JsBarcode("#barcode", String(c.code).trim(), { format: "CODE128", width: 2, height: 100, displayValue: false }); }
-                    catch(e) { bc.style.display='none'; txt.innerText = "Barcode Fout: " + c.code; }
-                }, 50);
+                canvas.style.display = 'block';
+                try {
+                    // Gebruik JsBarcode direct op het canvas element
+                    JsBarcode(canvas, codeData, {
+                        format: "CODE128",
+                        width: 2,
+                        height: 100,
+                        displayValue: false,
+                        margin: 10
+                    });
+                } catch(e) {
+                    canvas.style.display = 'none';
+                    qr.style.display = 'block';
+                    qr.innerHTML = `<p style="color:red; padding:10px;">Barcode fout.<br>Probeer QR type.</p>`;
+                }
             }
+            window.scrollTo({top: 0, behavior: 'smooth'});
         };
 
         window.toggleAdd = function() { const f = document.getElementById('addForm'); f.style.display = f.style.display === 'none' ? 'block' : 'none'; };
@@ -156,7 +169,7 @@
         window.deleteCard = function(i, e) { e.stopPropagation(); if(confirm("Wissen?")){ cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); } };
         window.closeEdit = function() { document.getElementById('editModal').style.display='none'; if(map){map.remove(); map=null;} };
         window.downloadBackup = function() { const a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(cards)); a.download="backup.json"; a.click(); };
-        window.importBackup = function(e) { const r=new FileReader(); r.onload=(ev)=>{ cards=JSON.parse(ev.target.result); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); }; r.readAsText(e.target.files[0]); };
+        window.importBackup = function(e) { const r=new FileReader(); r.onload=(ev)=>{ try { cards=JSON.parse(ev.target.result); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); } catch(err){alert("Import mislukt");} }; r.readAsText(e.target.files[0]); };
         window.initMap = function() { document.getElementById('map').style.display='block'; if(!map){ map=L.map('map').setView([50.8, 4.4], 10); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); marker=L.marker([50.8,4.4],{draggable:true}).addTo(map); map.on('click', e => { marker.setLatLng(e.latlng); tempCoords = e.latlng; }); } setTimeout(()=>map.invalidateSize(), 200); };
 
         document.addEventListener('DOMContentLoaded', () => {
