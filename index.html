@@ -35,9 +35,8 @@
         label { display: block; text-align: left; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #666; text-transform: uppercase; }
         .card-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: left; cursor: pointer; }
         #map { height: 200px; width: 100%; border-radius: 10px; margin-top: 10px; display: none; border: 1px solid #ccc; z-index: 1; }
-        #editModal, #scanner-overlay { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
+        #editModal { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
         .modal-content { background:white; padding:25px; border-radius:20px; width:90%; max-width:400px; text-align: left; max-height: 90vh; overflow-y: auto; }
-        #reader { width: 300px; background: white; border-radius: 10px; overflow: hidden; }
     </style>
 </head>
 <body>
@@ -47,7 +46,7 @@
     
     <div class="card" id="main-view">
         <div id="main-logo-box"></div>
-        <h3 id="store-name" style="margin: 5px 0;">Selecteer een kaart</h3>
+        <h3 id="store-name" style="margin: 5px 0;">Kies een kaart</h3>
         <div id="barcode-wrapper">
             <svg id="barcode"></svg>
             <div id="qrcode"></div>
@@ -59,14 +58,16 @@
     <div class="card">
         <button class="btn-blue" onclick="toggleAdd()">➕ Nieuwe Kaart Toevoegen</button>
         <div id="addForm" style="display:none; margin-top:20px; text-align: left;">
-            <label>Winkelnaam</label><input type="text" id="newName" placeholder="Bijv. Delhaize">
-            <label>Code</label><input type="text" id="newCode" placeholder="Code invoeren">
-            <button onclick="saveCard()">💾 Snel Opslaan</button>
+            <label>Winkelnaam</label><input type="text" id="newName">
+            <label>Code</label><input type="text" id="newCode">
+            <button onclick="saveCard()">💾 Opslaan</button>
         </div>
     </div>
 
-    <h3>Mijn Kaarten</h3>
-    <div id="card-list" class="card" style="padding: 5px;"></div>
+    <div id="card-list-container">
+        <h3>Mijn Kaarten</h3>
+        <div id="card-list" class="card" style="padding: 5px;"></div>
+    </div>
 
     <div style="display: flex; gap: 10px;">
         <button class="btn-orange" onclick="downloadBackup()">📤 Backup</button>
@@ -80,14 +81,12 @@
     <div class="modal-content">
         <h3>Aanpassen</h3>
         <label>Winkelnaam</label><input type="text" id="editName">
-        <label>Data voor Scanner</label><input type="text" id="editCode">
+        <label>Scanner Data (URL)</label><input type="text" id="editCode">
         <label>Display Nummer</label><input type="text" id="editDisplay">
         <label>Type</label>
         <select id="editType"><option value="barcode">Streepjescode</option><option value="qrcode">QR-code</option></select>
         <hr>
-        <label>Logo Domein (bijv. delhaize.be)</label><input type="text" id="editDomain">
-        <label>Kleur</label><input type="color" id="editColor">
-        <hr>
+        <label>Domein (bijv. ah.nl)</label><input type="text" id="editDomain">
         <button class="btn-orange" onclick="initMap()">📍 Kies locatie op kaart</button>
         <div id="map"></div>
         <button onclick="confirmEdit()" style="margin-top:15px;">💾 Opslaan</button>
@@ -95,346 +94,82 @@
     </div>
 </div>
 
-<div id="scanner-overlay"><div id="reader"></div><button class="btn-red" onclick="stopScanner()">Sluiten</button></div>
-
 <script>
-    let cards = [];
-    try { cards = JSON.parse(localStorage.getItem('myCards')) || []; } catch (e) { cards = []; }
-    let currentEditIndex = null, map = null, marker = null, tempCoords = null, html5QrScanner = null;
-
-    function getLogoHtml(card, size = 50) {
-        if (!card) return '';
-        const letter = card.name ? card.name.charAt(0).toUpperCase() : '?';
-        const bgColor = card.color || '#007bff';
-        const logoUrl = card.domain ? `https://www.google.com/s2/favicons?sz=128&domain=${card.domain}` : null;
-        return `<div class="logo-container" style="width:${size}px; height:${size}px; background-color:${bgColor};">
-            ${logoUrl ? `<img src="${logoUrl}" class="logo-img" onerror="this.style.display='none'; this.parentElement.innerHTML='${letter}';">` : letter}
-        </div>`;
-    }
-
-    function renderList() {
-        const listDiv = document.getElementById('card-list');
-        if (!listDiv) return;
-        listDiv.innerHTML = cards.map((c, i) => `
-            <div class="card-item" onclick="showCard(${i})">
-                ${getLogoHtml(c, 45)}
-                <div style="flex-grow:1; margin-left:10px;"><b>${c.name || 'Naamloos'}</b><br><small>${c.type === 'qrcode' ? 'QR' : 'Barcode'}</small></div>
-                <button class="btn-blue btn-small" onclick="openEdit(${i}, event)">Edit</button>
-                <button class="btn-red btn-small" onclick="deleteCard(${i}, event)">X</button>
-            </div>`).join('') || "<p>Geen kaarten.</p>";
-    }
-
-    function showCard(index) {
-        const c = cards[index];
-        if (!c) return;
+    // Alle logica in één enkel script blok
+    (function() {
+        let cards = [];
+        try { cards = JSON.parse(localStorage.getItem('myCards')) || []; } catch (e) { cards = []; }
         
-        document.getElementById('store-name').innerText = c.name || '';
-        document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
-        
-        const bc = document.getElementById('barcode');
-        const qr = document.getElementById('qrcode');
-        const txt = document.getElementById('display-text');
-        
-        // KRITIEK: Reset de SVG en andere elementen volledig
-        bc.style.display = 'none';
-        bc.innerHTML = ''; 
-        qr.style.display = 'none';
-        qr.innerHTML = '';
-        txt.innerText = c.displayNum || c.code || '';
+        let currentEditIndex = null, map = null, marker = null, tempCoords = null;
 
-        const cleanData = String(c.code).trim();
+        window.getLogoHtml = function(card, size = 50) {
+            const letter = card.name ? card.name[0].toUpperCase() : '?';
+            const logoUrl = card.domain ? `https://www.google.com/s2/favicons?sz=128&domain=${card.domain}` : null;
+            return `<div class="logo-container" style="width:${size}px; height:${size}px; background:${card.color || '#007bff'}">
+                ${logoUrl ? `<img src="${logoUrl}" class="logo-img" onerror="this.style.display='none'; this.parentElement.innerHTML='${letter}';">` : letter}
+            </div>`;
+        };
 
-        if (c.type === 'qrcode') {
-            qr.style.display = 'block';
-            try {
-                new QRCode(qr, { text: cleanData, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
-            } catch(e) { qr.innerText = "QR Fout"; }
-        } else {
-            bc.style.display = 'block';
-            try {
-                // We roepen JsBarcode aan op het ID
-                JsBarcode("#barcode", cleanData, {
-                    format: "CODE128",
-                    width: 2,
-                    height: 100,
-                    displayValue: false,
-                    margin: 10
-                });
-            } catch(e) {
-                console.error("JsBarcode error:", e);
-                bc.style.display = 'none';
+        window.renderList = function() {
+            const listDiv = document.getElementById('card-list');
+            if (!listDiv) return;
+            listDiv.innerHTML = cards.map((c, i) => `
+                <div class="card-item" onclick="showCard(${i})">
+                    ${getLogoHtml(c, 45)}
+                    <div style="flex-grow:1; margin-left:10px;"><b>${c.name || 'Naamloos'}</b></div>
+                    <button class="btn-blue btn-small" onclick="openEdit(${i}, event)">Edit</button>
+                    <button class="btn-red btn-small" onclick="deleteCard(${i}, event)">X</button>
+                </div>`).join('') || "<p>Geen kaarten.</p>";
+        };
+
+        window.showCard = function(index) {
+            const c = cards[index];
+            if (!c) return;
+            document.getElementById('store-name').innerText = c.name;
+            document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
+            
+            const bc = document.getElementById('barcode');
+            const qr = document.getElementById('qrcode');
+            const txt = document.getElementById('display-text');
+            
+            bc.style.display = 'none'; bc.innerHTML = '';
+            qr.style.display = 'none'; qr.innerHTML = '';
+            txt.innerText = c.displayNum || c.code;
+
+            if (c.type === 'qrcode') {
                 qr.style.display = 'block';
-                qr.innerHTML = `<div style="padding:20px; color:red;">Fout in barcode-data</div>`;
+                new QRCode(qr, { text: c.code, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+            } else {
+                bc.style.display = 'block';
+                // Kleine vertraging voor stabiliteit in mobiele browsers
+                setTimeout(() => {
+                    try { JsBarcode("#barcode", String(c.code).trim(), { format: "CODE128", width: 2, height: 100, displayValue: false }); }
+                    catch(e) { bc.style.display='none'; txt.innerText = "Barcode Fout: " + c.code; }
+                }, 50);
             }
-        }
-        window.scrollTo({top: 0, behavior: 'smooth'});
-    }
+        };
 
-    // --- Overige functies ---
-    function toggleAdd() { const f = document.getElementById('addForm'); f.style.display = (f.style.display==='none')?'block':'none'; }
-    function openEdit(i, e) { if(e) e.stopPropagation(); currentEditIndex = i; const c = cards[i]; document.getElementById('editName').value = c.name; document.getElementById('editCode').value = c.code; document.getElementById('editDisplay').value = c.displayNum || ''; document.getElementById('editType').value = c.type || 'barcode'; document.getElementById('editColor').value = c.color || '#007bff'; document.getElementById('editDomain').value = c.domain || ''; document.getElementById('editModal').style.display = 'flex'; }
-    function confirmEdit() { const c = cards[currentEditIndex]; c.name = document.getElementById('editName').value; c.code = document.getElementById('editCode').value; c.displayNum = document.getElementById('editDisplay').value; c.type = document.getElementById('editType').value; c.color = document.getElementById('editColor').value; c.domain = document.getElementById('editDomain').value; localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); }
-    function deleteCard(i, e) { if(e) e.stopPropagation(); if(confirm("Wissen?")){ cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); } }
-    function closeEdit() { document.getElementById('editModal').style.display='none'; if(map){map.remove(); map=null;} }
-    function saveCard() { const n=document.getElementById('newName').value, c=document.getElementById('newCode').value; if(n&&c){cards.push({name:n, code:c, type:'barcode', color:'#007bff'}); localStorage.setItem('myCards',JSON.stringify(cards)); location.reload();}}
-    function downloadBackup() { const a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(cards)); a.download="backup.json"; a.click(); }
-    function importBackup(e) { const r=new FileReader(); r.onload=(ev)=>{cards=JSON.parse(ev.target.result); localStorage.setItem('myCards',JSON.stringify(cards)); location.reload();}; r.readAsText(e.target.files[0]); }
-    function initMap() { document.getElementById('map').style.display='block'; if(!map){ map=L.map('map').setView([50.8, 4.4], 10); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); marker=L.marker([50.8,4.4],{draggable:true}).addTo(map); } setTimeout(()=>map.invalidateSize(), 200); }
+        window.toggleAdd = function() { const f = document.getElementById('addForm'); f.style.display = f.style.display === 'none' ? 'block' : 'none'; };
+        window.saveCard = function() { const n = document.getElementById('newName').value, c = document.getElementById('newCode').value; if(n&&c){ cards.push({name:n, code:c, type:'barcode'}); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); } };
+        window.openEdit = function(i, e) { e.stopPropagation(); currentEditIndex = i; const c = cards[i]; document.getElementById('editName').value = c.name; document.getElementById('editCode').value = c.code; document.getElementById('editDisplay').value = c.displayNum || ''; document.getElementById('editType').value = c.type || 'barcode'; document.getElementById('editDomain').value = c.domain || ''; document.getElementById('editModal').style.display = 'flex'; tempCoords = c.lat ? {lat: c.lat, lng: c.lon} : null; };
+        window.confirmEdit = function() { const c = cards[currentEditIndex]; c.name = document.getElementById('editName').value; c.code = document.getElementById('editCode').value; c.displayNum = document.getElementById('editDisplay').value; c.type = document.getElementById('editType').value; c.domain = document.getElementById('editDomain').value; if(tempCoords){ c.lat = tempCoords.lat; c.lon = tempCoords.lng; } localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); };
+        window.deleteCard = function(i, e) { e.stopPropagation(); if(confirm("Wissen?")){ cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); } };
+        window.closeEdit = function() { document.getElementById('editModal').style.display='none'; if(map){map.remove(); map=null;} };
+        window.downloadBackup = function() { const a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(cards)); a.download="backup.json"; a.click(); };
+        window.importBackup = function(e) { const r=new FileReader(); r.onload=(ev)=>{ cards=JSON.parse(ev.target.result); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); }; r.readAsText(e.target.files[0]); };
+        window.initMap = function() { document.getElementById('map').style.display='block'; if(!map){ map=L.map('map').setView([50.8, 4.4], 10); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); marker=L.marker([50.8,4.4],{draggable:true}).addTo(map); map.on('click', e => { marker.setLatLng(e.latlng); tempCoords = e.latlng; }); } setTimeout(()=>map.invalidateSize(), 200); };
 
-    document.addEventListener('DOMContentLoaded', () => { renderList(); });
-</script>
-</body>
-</html><!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Card Wallet Ultra</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <style>
-        :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; --warning: #fd7e14; }
-        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 0; margin: 0; background: #f0f2f5; color: #1c1e21; }
-        .container { max-width: 500px; margin: auto; padding: 20px; padding-bottom: 80px; }
-        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        
-        /* Logo's */
-        .logo-container { width: 60px; height: 60px; min-width: 60px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; font-weight: bold; color: white; border: 1px solid #eee; background: var(--primary); }
-        .logo-img { width: 85%; height: 85%; object-fit: contain; }
-        
-        /* Barcode/QR weergave */
-        #barcode-wrapper { background: white; padding: 15px; border-radius: 10px; min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; box-sizing: border-box; }
-        #barcode { max-width: 100%; height: auto; display: none; }
-        #qrcode { display: none; padding: 10px; background: white; }
-        #display-text { font-family: monospace; font-size: 1.3em; font-weight: bold; margin-top: 15px; letter-spacing: 1px; word-break: break-all; color: #333; }
-
-        /* Knoppen & Forms */
-        button { background: var(--success); color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: bold; width: 100%; margin-top: 10px; }
-        .btn-blue { background: var(--primary); }
-        .btn-orange { background: var(--warning); }
-        .btn-red { background: var(--danger); }
-        .btn-small { padding: 6px 12px; width: auto; font-size: 12px; margin: 2px; }
-        
-        input, select { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
-        label { display: block; text-align: left; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #666; text-transform: uppercase; }
-        
-        .card-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: left; cursor: pointer; }
-        
-        /* Map & Modals */
-        #map { height: 200px; width: 100%; border-radius: 10px; margin-top: 10px; display: none; border: 1px solid #ccc; z-index: 1; }
-        #editModal, #scanner-overlay { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
-        .modal-content { background:white; padding:25px; border-radius:20px; width:90%; max-width:400px; text-align: left; max-height: 90vh; overflow-y: auto; }
-        #reader { width: 300px; background: white; border-radius: 10px; overflow: hidden; }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h2>📍 Slimme Kaarthouder</h2>
-    
-    <div class="card" id="main-view">
-        <div id="main-logo-box"></div>
-        <h3 id="store-name" style="margin: 5px 0;">Selecteer een kaart</h3>
-        <div id="barcode-wrapper">
-            <svg id="barcode"></svg>
-            <div id="qrcode"></div>
-            <div id="display-text"></div>
-        </div>
-        <p id="distance" style="font-size: 0.85em; color: #666; margin-top: 10px;"></p>
-    </div>
-
-    <div class="card">
-        <button class="btn-blue" onclick="toggleAdd()">➕ Nieuwe Kaart Toevoegen</button>
-        <div id="addForm" style="display:none; margin-top:20px; text-align: left;">
-            <label>Winkelnaam</label><input type="text" id="newName" placeholder="Bijv. Colruyt">
-            <label>Code (Nummer of URL)</label><input type="text" id="newCode" placeholder="Typ of scan code">
-            <button onclick="saveCard()">💾 Snel Opslaan</button>
-        </div>
-    </div>
-
-    <h3>Mijn Kaarten</h3>
-    <div id="card-list" class="card" style="padding: 5px;"></div>
-
-    <div style="display: flex; gap: 10px;">
-        <button class="btn-orange" onclick="downloadBackup()">📤 Backup</button>
-        <button class="btn-blue" style="position: relative; overflow: hidden;">📥 Import 
-            <input type="file" accept=".json" onchange="importBackup(event)" style="position:absolute; opacity:0; left:0; top:0; height:100%; width:100%; cursor:pointer;">
-        </button>
-    </div>
-</div>
-
-<div id="editModal">
-    <div class="modal-content">
-        <h3>Aanpassen</h3>
-        <label>Winkelnaam</label><input type="text" id="editName">
-        <label>Data voor Scanner (URL/Nummer)</label><input type="text" id="editCode">
-        <label>Display Nummer (Onderaan code)</label><input type="text" id="editDisplay">
-        <label>Type</label>
-        <select id="editType"><option value="barcode">Streepjescode</option><option value="qrcode">QR-code</option></select>
-        <hr>
-        <label>Logo Domein (bijv. ah.nl)</label><input type="text" id="editDomain">
-        <label>Kleur</label><input type="color" id="editColor">
-        <hr>
-        <button class="btn-orange" onclick="initMap()">📍 Kies locatie op kaart</button>
-        <div id="map"></div>
-        <button onclick="confirmEdit()" style="margin-top:15px;">💾 Opslaan</button>
-        <button class="btn-red" onclick="closeEdit()">Annuleren</button>
-    </div>
-</div>
-
-<div id="scanner-overlay"><div id="reader"></div><button class="btn-red" onclick="stopScanner()">Sluiten</button></div>
-
-<script>
-    // 1. DATA INITIALISATIE
-    let cards = [];
-    try {
-        const stored = localStorage.getItem('myCards');
-        if (stored) cards = JSON.parse(stored);
-    } catch (e) { console.error("Data error", e); }
-
-    let currentEditIndex = null, map = null, marker = null, tempCoords = null;
-
-    // 2. RENDERING LOGICA
-    function getLogoHtml(card, size = 50) {
-        if (!card) return '';
-        const letter = card.name ? card.name.charAt(0).toUpperCase() : '?';
-        const bgColor = card.color || '#007bff';
-        const logoUrl = card.domain ? `https://www.google.com/s2/favicons?sz=128&domain=${card.domain}` : null;
-        
-        return `<div class="logo-container" style="width:${size}px; height:${size}px; background-color:${bgColor};">
-            ${logoUrl ? `<img src="${logoUrl}" class="logo-img" onerror="this.style.display='none'; this.parentElement.innerHTML='${letter}';">` : letter}
-        </div>`;
-    }
-
-    function renderList() {
-        const listDiv = document.getElementById('card-list');
-        if (!listDiv) return;
-        if (cards.length === 0) {
-            listDiv.innerHTML = "<p style='padding:15px;'>Nog geen kaarten. Importeer een backup of voeg er een toe.</p>";
-            return;
-        }
-        listDiv.innerHTML = cards.map((c, i) => `
-            <div class="card-item" onclick="showCard(${i})">
-                ${getLogoHtml(c, 45)}
-                <div style="flex-grow:1; margin-left:10px;"><b>${c.name || 'Naamloos'}</b><br><small>${c.lat ? '📍 Locatie ingesteld' : '⚪ Geen locatie'}</small></div>
-                <button class="btn-blue btn-small" onclick="openEdit(${i}, event)">Edit</button>
-                <button class="btn-red btn-small" onclick="deleteCard(${i}, event)">X</button>
-            </div>`).join('');
-    }
-
-    function showCard(index) {
-        const c = cards[index];
-        if (!c) return;
-        
-        const storeElem = document.getElementById('store-name');
-        const bc = document.getElementById('barcode');
-        const qr = document.getElementById('qrcode');
-        const txt = document.getElementById('display-text');
-        const logoBox = document.getElementById('main-logo-box');
-        
-        if (storeElem) storeElem.innerText = c.name || '';
-        if (logoBox) logoBox.innerHTML = getLogoHtml(c, 70);
-        
-        bc.style.display = 'none';
-        qr.style.display = 'none';
-        qr.innerHTML = '';
-        if (txt) txt.innerText = c.displayNum || c.code || '';
-
-        const cleanCode = String(c.code).trim();
-
-        if (c.type === 'qrcode') {
-            qr.style.display = 'block';
-            try {
-                new QRCode(qr, { text: cleanCode, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
-            } catch(e) { qr.innerText = "QR Fout"; }
-        } else {
-            bc.style.display = 'block';
-            try { 
-                JsBarcode("#barcode", cleanCode, { format: "CODE128", width: 2, height: 100, displayValue: false, margin: 10 }); 
-            } catch(e) { 
-                bc.style.display='none'; qr.style.display='block'; qr.innerText="Barcode fout (probeer QR)"; 
+        document.addEventListener('DOMContentLoaded', () => {
+            renderList();
+            if (navigator.geolocation && cards.length > 0) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    let closestIdx = -1, minD = Infinity;
+                    cards.forEach((c, i) => { if (c.lat) { const d = Math.sqrt((c.lat-pos.coords.latitude)**2 + (c.lon-pos.coords.longitude)**2); if (d < minD) { minD = d; closestIdx = i; } } });
+                    if (closestIdx !== -1) showCard(closestIdx);
+                }, null, {timeout: 5000});
             }
-        }
-        window.scrollTo({top: 0, behavior: 'smooth'});
-    }
-
-    // 3. EVENT FUNCTIES
-    function toggleAdd() { const f = document.getElementById('addForm'); if(f) f.style.display = (f.style.display === 'none') ? 'block' : 'none'; }
-    
-    function saveCard() {
-        const n = document.getElementById('newName').value, c = document.getElementById('newCode').value;
-        if (!n || !c) return alert("Vul alles in");
-        cards.push({ name: n, code: c, type: 'barcode', color: '#007bff' });
-        localStorage.setItem('myCards', JSON.stringify(cards));
-        location.reload();
-    }
-
-    function openEdit(index, e) {
-        if (e) e.stopPropagation();
-        currentEditIndex = index;
-        const c = cards[index];
-        document.getElementById('editName').value = c.name || '';
-        document.getElementById('editCode').value = c.code || '';
-        document.getElementById('editDisplay').value = c.displayNum || '';
-        document.getElementById('editType').value = c.type || 'barcode';
-        document.getElementById('editColor').value = c.color || '#007bff';
-        document.getElementById('editDomain').value = c.domain || '';
-        document.getElementById('editModal').style.display = 'flex';
-        tempCoords = c.lat ? {lat: c.lat, lng: c.lon} : null;
-    }
-
-    function confirmEdit() {
-        const c = cards[currentEditIndex];
-        c.name = document.getElementById('editName').value;
-        c.code = document.getElementById('editCode').value;
-        c.displayNum = document.getElementById('editDisplay').value;
-        c.type = document.getElementById('editType').value;
-        c.color = document.getElementById('editColor').value;
-        c.domain = document.getElementById('editDomain').value;
-        if (tempCoords) { c.lat = tempCoords.lat; c.lon = tempCoords.lng; }
-        localStorage.setItem('myCards', JSON.stringify(cards));
-        location.reload();
-    }
-
-    function initMap() {
-        document.getElementById('map').style.display = 'block';
-        const c = cards[currentEditIndex];
-        const lat = c.lat || 50.85; const lon = c.lon || 4.35;
-        if (!map) {
-            map = L.map('map').setView([lat, lon], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-            marker = L.marker([lat, lon], {draggable: true}).addTo(map);
-            map.on('click', e => { marker.setLatLng(e.latlng); tempCoords = e.latlng; });
-        }
-        setTimeout(() => map.invalidateSize(), 200);
-    }
-
-    function deleteCard(i, e) { if(e) e.stopPropagation(); if(confirm("Wissen?")){ cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); } }
-    function closeEdit() { document.getElementById('editModal').style.display = 'none'; if(map){ map.remove(); map=null; } }
-    function downloadBackup() { const a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(cards)); a.download="backup.json"; a.click(); }
-    function importBackup(e) { const r=new FileReader(); r.onload=(ev)=>{ try { cards=JSON.parse(ev.target.result); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); } catch(err){alert("Fout bestand");}}; r.readAsText(e.target.files[0]); }
-
-    // INITIALISATIE
-    document.addEventListener('DOMContentLoaded', () => {
-        renderList();
-        if (navigator.geolocation && cards.length > 0) {
-            navigator.geolocation.getCurrentPosition(pos => {
-                let closestIdx = -1, minD = Infinity;
-                cards.forEach((c, i) => {
-                    if (c.lat) {
-                        const d = Math.sqrt((c.lat-pos.coords.latitude)**2 + (c.lon-pos.coords.longitude)**2);
-                        if (d < minD) { minD = d; closestIdx = i; }
-                    }
-                });
-                if (closestIdx !== -1) showCard(closestIdx);
-            }, null, {timeout: 5000});
-        }
-    });
+        });
+    })();
 </script>
 </body>
 </html>
