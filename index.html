@@ -17,24 +17,28 @@
         .container { max-width: 500px; margin: auto; padding: 20px; padding-bottom: 80px; }
         .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
         
+        /* Logo Styling */
         .logo-container { width: 60px; height: 60px; min-width: 60px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; font-weight: bold; color: white; border: 1px solid #eee; background: var(--primary); }
         .logo-img { width: 85%; height: 85%; object-fit: contain; }
         
         #barcode-wrapper { background: white; padding: 15px; border-radius: 10px; min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; box-sizing: border-box; border: 1px solid #eee; }
-        /* We gebruiken nu canvas voor barcodes */
         #barcode-canvas { max-width: 100%; height: auto; display: none; }
         #qrcode { display: none; padding: 10px; background: white; }
         #display-text { font-family: monospace; font-size: 1.3em; font-weight: bold; margin-top: 15px; letter-spacing: 1px; word-break: break-all; color: #333; }
 
-        button { background: var(--success); color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: bold; width: 100%; margin-top: 10px; }
+        /* Knoppen & Interactie */
+        button { background: var(--success); color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: bold; width: 100%; margin-top: 10px; transition: opacity 0.2s; }
+        button:active { opacity: 0.8; }
         .btn-blue { background: var(--primary); }
         .btn-orange { background: var(--warning); }
         .btn-red { background: var(--danger); }
         .btn-small { padding: 6px 12px; width: auto; font-size: 12px; margin: 2px; }
         
-        input, select { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
+        input, select { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; }
         label { display: block; text-align: left; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #666; text-transform: uppercase; }
+        
         .card-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: left; cursor: pointer; }
+        
         #map { height: 200px; width: 100%; border-radius: 10px; margin-top: 10px; display: none; border: 1px solid #ccc; z-index: 1; }
         #editModal { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
         .modal-content { background:white; padding:25px; border-radius:20px; width:90%; max-width:400px; text-align: left; max-height: 90vh; overflow-y: auto; }
@@ -59,16 +63,14 @@
     <div class="card">
         <button class="btn-blue" onclick="toggleAdd()">➕ Nieuwe Kaart Toevoegen</button>
         <div id="addForm" style="display:none; margin-top:20px; text-align: left;">
-            <label>Winkelnaam</label><input type="text" id="newName">
-            <label>Code</label><input type="text" id="newCode">
-            <button onclick="saveCard()">💾 Opslaan</button>
+            <label>Winkelnaam</label><input type="text" id="newName" placeholder="Bijv. Delhaize">
+            <label>Code (Nummer of URL)</label><input type="text" id="newCode" placeholder="Typ of scan code">
+            <button onclick="saveCard()">💾 Snel Opslaan</button>
         </div>
     </div>
 
-    <div id="card-list-container">
-        <h3>Mijn Kaarten</h3>
-        <div id="card-list" class="card" style="padding: 5px;"></div>
-    </div>
+    <h3>Mijn Kaarten</h3>
+    <div id="card-list" class="card" style="padding: 5px;"></div>
 
     <div style="display: flex; gap: 10px;">
         <button class="btn-orange" onclick="downloadBackup()">📤 Backup</button>
@@ -80,17 +82,37 @@
 
 <div id="editModal">
     <div class="modal-content">
-        <h3>Aanpassen</h3>
-        <label>Winkelnaam</label><input type="text" id="editName">
-        <label>Scanner Data (URL)</label><input type="text" id="editCode">
-        <label>Display Nummer</label><input type="text" id="editDisplay">
-        <label>Type</label>
-        <select id="editType"><option value="barcode">Streepjescode</option><option value="qrcode">QR-code</option></select>
+        <h3 style="margin-top: 0;">Kaart Aanpassen</h3>
+        
+        <label>Winkelnaam</label>
+        <input type="text" id="editName">
+        
+        <label>Barcode / QR Data</label>
+        <input type="text" id="editCode" placeholder="De data voor de scanner">
+        
+        <label>Klantennummer (Tekst onderaan)</label>
+        <input type="text" id="editDisplay" placeholder="Het nummer om te tonen">
+        
+        <label>Type Code</label>
+        <select id="editType">
+            <option value="barcode">Streepjescode (1D)</option>
+            <option value="qrcode">QR-code (2D)</option>
+        </select>
+        
         <hr>
-        <label>Logo Domein (ah.nl)</label><input type="text" id="editDomain">
+        
+        <label>Logo via Domein (bijv. jumbo.com)</label>
+        <input type="text" id="editDomain" placeholder="winkel.nl">
+        
+        <label>Themakleur</label>
+        <input type="color" id="editColor" style="height: 40px; padding: 2px;">
+        
+        <hr>
+        
         <button class="btn-orange" onclick="initMap()">📍 Kies locatie op kaart</button>
         <div id="map"></div>
-        <button onclick="confirmEdit()" style="margin-top:15px;">💾 Opslaan</button>
+        
+        <button onclick="confirmEdit()" style="margin-top:15px;">💾 Wijzigingen Opslaan</button>
         <button class="btn-red" onclick="closeEdit()">Annuleren</button>
     </div>
 </div>
@@ -102,29 +124,39 @@
         
         let currentEditIndex = null, map = null, marker = null, tempCoords = null;
 
+        // --- Logo Functie ---
         window.getLogoHtml = function(card, size = 50) {
+            if (!card) return '';
             const letter = card.name ? card.name[0].toUpperCase() : '?';
+            const color = card.color || '#007bff';
             const logoUrl = card.domain ? `https://www.google.com/s2/favicons?sz=128&domain=${card.domain}` : null;
-            return `<div class="logo-container" style="width:${size}px; height:${size}px; background:${card.color || '#007bff'}">
+            
+            return `<div class="logo-container" style="width:${size}px; height:${size}px; background:${color}">
                 ${logoUrl ? `<img src="${logoUrl}" class="logo-img" onerror="this.style.display='none'; this.parentElement.innerHTML='${letter}';">` : letter}
             </div>`;
         };
 
+        // --- Lijst tonen ---
         window.renderList = function() {
             const listDiv = document.getElementById('card-list');
             if (!listDiv) return;
             listDiv.innerHTML = cards.map((c, i) => `
                 <div class="card-item" onclick="showCard(${i})">
                     ${getLogoHtml(c, 45)}
-                    <div style="flex-grow:1; margin-left:10px;"><b>${c.name || 'Naamloos'}</b></div>
+                    <div style="flex-grow:1; margin-left:12px;">
+                        <b>${c.name || 'Naamloos'}</b><br>
+                        <small style="color:#888">${c.lat ? '📍 Locatie ingesteld' : '⚪ Geen locatie'}</small>
+                    </div>
                     <button class="btn-blue btn-small" onclick="openEdit(${i}, event)">Edit</button>
                     <button class="btn-red btn-small" onclick="deleteCard(${i}, event)">X</button>
-                </div>`).join('') || "<p>Geen kaarten.</p>";
+                </div>`).join('') || "<p style='padding:20px;'>Geen kaarten gevonden.</p>";
         };
 
+        // --- Kaart weergeven ---
         window.showCard = function(index) {
             const c = cards[index];
             if (!c) return;
+            
             document.getElementById('store-name').innerText = c.name;
             document.getElementById('main-logo-box').innerHTML = getLogoHtml(c, 70);
             
@@ -132,21 +164,19 @@
             const qr = document.getElementById('qrcode');
             const txt = document.getElementById('display-text');
             
-            // Alles resetten
             canvas.style.display = 'none';
             qr.style.display = 'none'; qr.innerHTML = '';
             txt.innerText = c.displayNum || c.code;
 
-            const codeData = String(c.code).trim();
+            const cleanCode = String(c.code).trim();
 
             if (c.type === 'qrcode') {
                 qr.style.display = 'block';
-                new QRCode(qr, { text: codeData, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+                new QRCode(qr, { text: cleanCode, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
             } else {
                 canvas.style.display = 'block';
                 try {
-                    // Gebruik JsBarcode direct op het canvas element
-                    JsBarcode(canvas, codeData, {
+                    JsBarcode(canvas, cleanCode, {
                         format: "CODE128",
                         width: 2,
                         height: 100,
@@ -156,33 +186,53 @@
                 } catch(e) {
                     canvas.style.display = 'none';
                     qr.style.display = 'block';
-                    qr.innerHTML = `<p style="color:red; padding:10px;">Barcode fout.<br>Probeer QR type.</p>`;
+                    qr.innerHTML = `<div style="padding:20px; color:red;">Fout in barcode data</div>`;
                 }
             }
             window.scrollTo({top: 0, behavior: 'smooth'});
         };
 
-        window.toggleAdd = function() { const f = document.getElementById('addForm'); f.style.display = f.style.display === 'none' ? 'block' : 'none'; };
-        window.saveCard = function() { const n = document.getElementById('newName').value, c = document.getElementById('newCode').value; if(n&&c){ cards.push({name:n, code:c, type:'barcode'}); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); } };
-        window.openEdit = function(i, e) { e.stopPropagation(); currentEditIndex = i; const c = cards[i]; document.getElementById('editName').value = c.name; document.getElementById('editCode').value = c.code; document.getElementById('editDisplay').value = c.displayNum || ''; document.getElementById('editType').value = c.type || 'barcode'; document.getElementById('editDomain').value = c.domain || ''; document.getElementById('editModal').style.display = 'flex'; tempCoords = c.lat ? {lat: c.lat, lng: c.lon} : null; };
-        window.confirmEdit = function() { const c = cards[currentEditIndex]; c.name = document.getElementById('editName').value; c.code = document.getElementById('editCode').value; c.displayNum = document.getElementById('editDisplay').value; c.type = document.getElementById('editType').value; c.domain = document.getElementById('editDomain').value; if(tempCoords){ c.lat = tempCoords.lat; c.lon = tempCoords.lng; } localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); };
-        window.deleteCard = function(i, e) { e.stopPropagation(); if(confirm("Wissen?")){ cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); } };
-        window.closeEdit = function() { document.getElementById('editModal').style.display='none'; if(map){map.remove(); map=null;} };
-        window.downloadBackup = function() { const a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(cards)); a.download="backup.json"; a.click(); };
-        window.importBackup = function(e) { const r=new FileReader(); r.onload=(ev)=>{ try { cards=JSON.parse(ev.target.result); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); } catch(err){alert("Import mislukt");} }; r.readAsText(e.target.files[0]); };
-        window.initMap = function() { document.getElementById('map').style.display='block'; if(!map){ map=L.map('map').setView([50.8, 4.4], 10); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); marker=L.marker([50.8,4.4],{draggable:true}).addTo(map); map.on('click', e => { marker.setLatLng(e.latlng); tempCoords = e.latlng; }); } setTimeout(()=>map.invalidateSize(), 200); };
+        // --- Acties ---
+        window.toggleAdd = function() {
+            const f = document.getElementById('addForm');
+            f.style.display = (f.style.display === 'none') ? 'block' : 'none';
+        };
 
-        document.addEventListener('DOMContentLoaded', () => {
-            renderList();
-            if (navigator.geolocation && cards.length > 0) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    let closestIdx = -1, minD = Infinity;
-                    cards.forEach((c, i) => { if (c.lat) { const d = Math.sqrt((c.lat-pos.coords.latitude)**2 + (c.lon-pos.coords.longitude)**2); if (d < minD) { minD = d; closestIdx = i; } } });
-                    if (closestIdx !== -1) showCard(closestIdx);
-                }, null, {timeout: 5000});
+        window.saveCard = function() {
+            const n = document.getElementById('newName').value;
+            const c = document.getElementById('newCode').value;
+            if(n && c) {
+                cards.push({ name: n, code: c, type: 'barcode', color: '#007bff' });
+                localStorage.setItem('myCards', JSON.stringify(cards));
+                location.reload();
             }
-        });
-    })();
-</script>
-</body>
-</html>
+        };
+
+        window.openEdit = function(index, event) {
+            if (event) event.stopPropagation();
+            currentEditIndex = index;
+            const c = cards[index];
+            document.getElementById('editName').value = c.name || '';
+            document.getElementById('editCode').value = c.code || '';
+            document.getElementById('editDisplay').value = c.displayNum || '';
+            document.getElementById('editType').value = c.type || 'barcode';
+            document.getElementById('editColor').value = c.color || '#007bff';
+            document.getElementById('editDomain').value = c.domain || '';
+            document.getElementById('editModal').style.display = 'flex';
+            tempCoords = c.lat ? {lat: c.lat, lng: c.lon} : null;
+        };
+
+        window.confirmEdit = function() {
+            const c = cards[currentEditIndex];
+            c.name = document.getElementById('editName').value;
+            c.code = document.getElementById('editCode').value;
+            c.displayNum = document.getElementById('editDisplay').value;
+            c.type = document.getElementById('editType').value;
+            c.color = document.getElementById('editColor').value;
+            c.domain = document.getElementById('editDomain').value;
+            if (tempCoords) { c.lat = tempCoords.lat; c.lon = tempCoords.lng; }
+            localStorage.setItem('myCards', JSON.stringify(cards));
+            location.reload();
+        };
+
+        window.deleteCard
