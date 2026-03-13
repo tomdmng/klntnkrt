@@ -7,6 +7,7 @@
     
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -34,8 +35,11 @@
         .card-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; text-align: left; }
         
         #map { height: 180px; width: 100%; border-radius: 10px; margin-top: 10px; display: none; border: 1px solid #ccc; }
-        #editModal { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
+        
+        /* Modals & Scanner Overlay */
+        #editModal, #scannerOverlay { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; }
         .modal-content { background:white; padding:20px; border-radius:20px; width:85%; max-width:380px; text-align: left; max-height: 85vh; overflow-y: auto; }
+        #reader { width: 100%; max-width: 320px; background: white; border-radius: 10px; overflow: hidden; }
     </style>
 </head>
 <body>
@@ -51,13 +55,15 @@
             <div id="qrcode"></div>
             <div id="display-text"></div>
         </div>
+        <p id="distance" style="font-size: 0.85em; color: #666; margin-top: 10px;"></p>
     </div>
 
     <div class="card">
         <button class="btn-blue" onclick="toggleAdd()">➕ Nieuwe Kaart</button>
-        <div id="addForm" style="display:none; margin-top:15px;">
-            <input type="text" id="newName" placeholder="Winkelnaam">
-            <input type="text" id="newCode" placeholder="Code (Nummer of URL)">
+        <div id="addForm" style="display:none; margin-top:15px; text-align: left;">
+            <label>Winkelnaam</label><input type="text" id="newName" placeholder="Winkelnaam">
+            <label>Code (Nummer of URL)</label><input type="text" id="newCode" placeholder="Scan of typ code">
+            <button class="btn-orange" onclick="startScanner('newCode')">📷 Scan met Camera</button>
             <button onclick="saveCard()">💾 Opslaan</button>
         </div>
     </div>
@@ -82,18 +88,23 @@
         <label>Type</label>
         <select id="editType"><option value="barcode">Barcode</option><option value="qrcode">QR-code</option></select>
         <label>Domein (bv. ah.nl)</label><input type="text" id="editDomain">
-        <button class="btn-orange" onclick="initMap()">📍 Kies op kaart</button>
+        <button class="btn-orange" onclick="startScanner('editCode')">📷 Nieuwe Scan</button>
+        <button class="btn-orange" style="margin-top:10px;" onclick="initMap()">📍 Kies op kaart</button>
         <div id="map"></div>
         <button onclick="confirmEdit()" style="margin-top:15px;">💾 Opslaan</button>
         <button class="btn-red" onclick="closeEdit()">Annuleren</button>
     </div>
 </div>
 
+<div id="scannerOverlay">
+    <div id="reader"></div>
+    <button class="btn-red" onclick="stopScanner()" style="width: 200px; margin-top: 15px;">Sluiten</button>
+</div>
+
 <script>
-    // Gebruik var in plaats van let/const om "redeclaration" fouten te voorkomen bij herladen
     var cards = [];
     try { cards = JSON.parse(localStorage.getItem('myCards')) || []; } catch(e) { cards = []; }
-    var currentEditIndex = null, map = null, marker = null, tempCoords = null;
+    var currentEditIndex = null, map = null, marker = null, tempCoords = null, html5QrScanner = null;
 
     function getLogoHtml(card, size) {
         if (!card) return '';
@@ -114,7 +125,7 @@
                 '<button class="btn-blue btn-small" onclick="openEdit('+i+', event)">Edit</button>' +
                 '<button class="btn-red btn-small" onclick="deleteCard('+i+', event)">X</button>' +
                 '</div>';
-        }).join('') || '<p>Lijst is leeg.</p>';
+        }).join('') || '<p>Geen kaarten gevonden.</p>';
     }
 
     function showCard(index) {
@@ -142,13 +153,37 @@
         }
     }
 
+    // SCANNER LOGICA
+    function startScanner(targetId) {
+        document.getElementById('scannerOverlay').style.display = 'flex';
+        html5QrScanner = new Html5Qrcode("reader");
+        html5QrScanner.start(
+            { facingMode: "environment" }, 
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            function(decodedText) {
+                document.getElementById(targetId).value = decodedText;
+                stopScanner();
+            }
+        ).catch(function(err) { alert("Camera fout: " + err); stopScanner(); });
+    }
+
+    function stopScanner() {
+        if (html5QrScanner) {
+            html5QrScanner.stop().then(function() {
+                document.getElementById('scannerOverlay').style.display = 'none';
+            }).catch(function() {
+                document.getElementById('scannerOverlay').style.display = 'none';
+            });
+        } else {
+            document.getElementById('scannerOverlay').style.display = 'none';
+        }
+    }
+
     function toggleAdd() { var f = document.getElementById('addForm'); f.style.display = (f.style.display === 'none') ? 'block' : 'none'; }
-    
     function saveCard() {
         var n = document.getElementById('newName').value, c = document.getElementById('newCode').value;
         if(n && c) { cards.push({name:n, code:c, type:'barcode'}); localStorage.setItem('myCards', JSON.stringify(cards)); location.reload(); }
     }
-
     function openEdit(index, e) {
         if(e) e.stopPropagation();
         currentEditIndex = index;
@@ -161,7 +196,6 @@
         document.getElementById('editModal').style.display = 'flex';
         tempCoords = c.lat ? {lat: c.lat, lng: c.lon} : null;
     }
-
     function confirmEdit() {
         var c = cards[currentEditIndex];
         c.name = document.getElementById('editName').value;
@@ -173,7 +207,6 @@
         localStorage.setItem('myCards', JSON.stringify(cards));
         location.reload();
     }
-
     function deleteCard(i, e) { if(e) e.stopPropagation(); if(confirm("Wissen?")){ cards.splice(i,1); localStorage.setItem('myCards', JSON.stringify(cards)); renderList(); } }
     function closeEdit() { document.getElementById('editModal').style.display='none'; if(map){map.remove(); map=null;} }
     function downloadBackup() { var a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(cards)); a.download="backup.json"; a.click(); }
